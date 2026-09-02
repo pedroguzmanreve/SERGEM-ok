@@ -13,17 +13,19 @@ export type RiskLevel = 1 | 2 | 3 | 4 | 5;
 
 export type UserRole = 'Administrativo' | 'Jefe de Zona' | 'Jefe de Operaciones' | 'Repartidor';
 
-export interface AuthUser {
-  id: string;
-  cedula: string;
-  nombre: string;
-  apellido: string;
-  email?: string;
-  rol: UserRole;
-  cargo: string;
-  departamento?: Department;
-  placaVehiculo?: string;
-  jefeZonaId?: string;
+export type AppRole = 'Administrativo' | 'Jefe de Zona' | 'Repartidor';
+
+export interface AppUserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: AppRole;
+  employeeId?: string;
+  photoURL?: string;
+  cedula?: string;
+  telefono?: string;
+  createdAt: string;
+  lastLogin?: string;
 }
 
 export interface Employee {
@@ -46,10 +48,11 @@ export interface Employee {
   activo: boolean;
   // Campos Portal Administración & Operaciones
   rol: UserRole;
-  placaVehiculo?: string;
-  jefeZonaId?: string;
+  placaVehiculo?: string; // Opcional
+  jefeZonaId?: string; // Asignación de Jefe de Zona para Repartidores
   email?: string;
   telefono?: string;
+  ciudad?: string;
   estadoInvitacion?: 'Invitado' | 'Activo' | 'Pendiente';
 }
 
@@ -57,42 +60,15 @@ export type ShiftType = 'Continua' | 'Partido' | 'Medio Tiempo Mañana' | 'Medio
 
 export interface ShiftDetails {
   tipo: ShiftType;
-  clienteNombre?: string;
+  clienteNombre?: string; // Cliente / Sede asignada (e.g. "Almacenes Éxito S.A.")
   clienteId?: string;
+  // Jornada Continua o Mañana
   horaInicio1?: string; // e.g. "07:00"
   horaFin1?: string; // e.g. "15:00" o "12:00"
+  // Jornada Tarde (en Turno Partido)
   horaInicio2?: string; // e.g. "14:00"
   horaFin2?: string; // e.g. "18:00"
   observaciones?: string;
-}
-
-export type DriverShiftLiveStatus = 
-  | 'PENDIENTE_INICIO'
-  | 'INICIADO'
-  | 'FINALIZADO'
-  | 'DESCANSO'
-  | 'SIN_TURNO';
-
-export interface DriverDailyAttendance {
-  repartidorId: string;
-  diaSemana: 'Lunes' | 'Martes' | 'Miércoles' | 'Jueves' | 'Viernes' | 'Sábado' | 'Domingo';
-  fecha: string;
-  estado: DriverShiftLiveStatus;
-  horaInicioProgramada?: string;
-  horaFinProgramada?: string;
-  clienteNombre?: string;
-  horaConexionReal?: string;
-  minutosRetraso?: number;
-  fotoAuditoria?: string;
-  salidasFueraPerimetro?: number;
-  valorFueraPerimetro?: number;
-  ultimoContacto?: {
-    tipo: 'WhatsApp' | 'Llamada';
-    fechaHora: string;
-    mensajeEnviado?: string;
-    registradoPor?: string;
-    respuestaRegistrada?: string;
-  };
 }
 
 export interface WeeklySchedule {
@@ -117,40 +93,10 @@ export interface ZoneChiefNovedad {
   jefeZonaId: string;
   fecha: string; // YYYY-MM-DD
   tipo: 'Permiso Remunerado' | 'Permiso No Remunerado' | 'Incapacidad';
-  horaInicio: string;
-  horaFin: string;
+  horaInicio: string; // e.g. "09:00"
+  horaFin: string; // e.g. "10:00"
   duracionHoras: number;
   observaciones: string;
-  fechaRegistro: string;
-  archivoUrl?: string;
-  archivoNombre?: string;
-}
-
-// Client entity & custom tariff schema
-export interface ClientTariffs {
-  tarifaBasePaquete: number;
-  tarifaHoraOrdinaria: number;
-  tarifaHoraExtraDiurna: number;
-  tarifaHoraExtraNocturna: number;
-  tarifaSalidaFueraPerimetro: number; // e.g. $22.000 COP
-  tarifaRecargoDominical: number;
-  tarifaRecargoNocturno?: number;
-  tarifaMensajeroFijoMensual?: number;
-}
-
-export interface CompanyClient {
-  id: string;
-  nombre: string;
-  nit: string;
-  direccion: string;
-  ciudad: string;
-  telefono: string;
-  emailContacto: string;
-  personaContacto: string;
-  estado: 'Activo' | 'Inactivo';
-  tarifas: ClientTariffs;
-  sedes?: string[];
-  observaciones?: string;
   fechaRegistro: string;
 }
 
@@ -165,21 +111,10 @@ export interface ClientOrderReport {
   paquetesEntregados: number;
   ventaNeta: number;
   horasTrabajadas: number;
-  horasOrdinarias: number; // Base jornada 42h
-  horasExtrasDiurnas: number; // HED (+25%)
-  horasExtrasNocturnas: number; // HEN (+75%)
-  horasFestivas: number; // HEDD (+100%)
-  horasExtrasFestivasNocturnas?: number; // HENF (+150%)
-  recargoNocturno?: number; // RN (+35%)
-  recargoFestivo?: number; // RDF (+75%)
-  salidasFueraPerimetro: number; // Cantidad de salidas fuera del perímetro urbano
-  valorFueraPerimetro: number; // Valor liquidado de salidas fuera de perímetro
-  detallesFueraPerimetro?: {
-    destino: string;
-    cantidad: number;
-    tarifaUnitaria: number;
-    observacion?: string;
-  }[];
+  horasOrdinarias: number;
+  horasExtrasDiurnas: number;
+  horasExtrasNocturnas: number;
+  horasFestivas: number;
 }
 
 export interface HoursNovedades {
@@ -189,12 +124,10 @@ export interface HoursNovedades {
   horasExtrasDominicalesNocturnas: number; // 150%
   horasRecargoNocturno: number; // 35%
   horasRecargoDominical: number; // 75%
-  salidasFueraPerimetro?: number;
-  valorFueraPerimetro?: number;
 }
 
 export interface EmployeeNovedades {
-  diasTrabajados: number;
+  diasTrabajados: number; // Max 30 por mes o 15 por quincena
   horas: HoursNovedades;
   comisiones: number;
   bonificacionesConstitutivas: number;
@@ -224,21 +157,19 @@ export interface PayrollCalculationItem {
     rn: number;
     rd: number;
   };
-  salidasFueraPerimetro?: number;
-  valorFueraPerimetro?: number;
   comisiones: number;
   bonificacionesConstitutivas: number;
   bonificacionesNoConstitutivas: number;
   auxilioNoConstitutivo: number;
   incapacidades: number;
-  totalDevengadoSalarial: number;
-  totalDevengadoNoSalarial: number;
+  totalDevengadoSalarial: number; // Constitutivo
+  totalDevengadoNoSalarial: number; // No constitutivo
   totalDevengado: number;
 
   // Deducciones Empleado
   deduccionSalud: number; // 4%
   deduccionPension: number; // 4%
-  fondoSolidaridadPensional: number;
+  fondoSolidaridadPensional: number; // 1% - 2%
   retencionFuente: number;
   prestamos: number;
   otrasDeducciones: number;
@@ -248,23 +179,23 @@ export interface PayrollCalculationItem {
   netoAPagar: number;
 
   // Seguridad Social y Parafiscales Patronales (Carga Empresa)
-  aporteSaludEmpresa: number;
-  aportePensionEmpresa: number;
-  aporteARLEmpresa: number;
-  aporteCajaCompensacion: number;
-  aporteSena: number;
-  aporteICBF: number;
+  aporteSaludEmpresa: number; // 8.5% (o $0 si aplica exención Art 114-1)
+  aportePensionEmpresa: number; // 12%
+  aporteARLEmpresa: number; // según nivel de riesgo
+  aporteCajaCompensacion: number; // 4%
+  aporteSena: number; // 2% (o $0 exención)
+  aporteICBF: number; // 3% (o $0 exención)
   totalSeguridadSocialEmpresa: number;
   totalParafiscalesEmpresa: number;
 
   // Provisiones Prestaciones Sociales (Carga Empresa)
-  provisionPrima: number;
-  provisionCesantias: number;
-  provisionInteresesCesantias: number;
-  provisionVacaciones: number;
+  provisionPrima: number; // 8.33%
+  provisionCesantias: number; // 8.33%
+  provisionInteresesCesantias: number; // 1% mensual (12% anual)
+  provisionVacaciones: number; // 4.17%
   totalProvisionesEmpresa: number;
 
-  // Costo Total Empresa
+  // Costo Total Empresa para este empleado
   costoTotalEmpresa: number;
 }
 
@@ -277,32 +208,15 @@ export interface CompanySettings {
   email: string;
   smmlv: number; // Salario Mínimo Mensual Legal Vigente
   auxilioTransporteMensual: number;
-  
-  // Jornada Laboral (Reforma Ley 2101)
-  jornadaMaximaSemanal: number; // 42 horas (2026)
-  jornadaDiariaBase: number; // 7 u 8 horas
-
-  // Parámetros de Seguridad Social
   porcentajeSaludEmpleado: number; // 4%
   porcentajePensionEmpleado: number; // 4%
   porcentajeSaludEmpresa: number; // 8.5%
   porcentajePensionEmpresa: number; // 12%
-  aplicaExencionArt114: boolean;
+  aplicaExencionArt114: boolean; // Exención de Salud, Sena e ICBF para trabajadores < 10 SMMLV
   porcentajeCajaCompensacion: number; // 4%
   porcentajeSena: number; // 2%
   porcentajeICBF: number; // 3%
   
-  // Tarifas Estándar Clientes y Operación
-  tarifasGeneralesClientes: {
-    tarifaBasePaquete: number;
-    tarifaHoraOrdinaria: number;
-    tarifaHoraExtraDiurna: number;
-    tarifaHoraExtraNocturna: number;
-    tarifaSalidaFueraPerimetro: number; // Extra-radio urbano
-    tarifaRecargoDominical: number;
-    tarifaRecargoNocturno: number;
-  };
-
   // Riesgos ARL
   tarifasARL: {
     1: number; // 0.522%
@@ -315,11 +229,11 @@ export interface CompanySettings {
 
 export interface PayrollPeriod {
   id: string;
-  nombrePeriodo: string;
+  nombrePeriodo: string; // ej. "Segunda Quincena Julio 2026"
   fechaInicio: string;
   fechaFin: string;
   tipoPeriodo: 'Quincenal' | 'Mensual';
-  diasBasePeriodo: number;
+  diasBasePeriodo: number; // 15 o 30
   estado: 'Borrador' | 'Liquidata' | 'Aprobada' | 'Pagada';
   fechaLiquidacion: string;
 }

@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Employee, UserRole, WeeklySchedule, DriverDailyAttendance } from '../types/payroll';
+import React, { useState } from 'react';
+import { Employee, UserRole } from '../types/payroll';
 import {
   Users,
   UserPlus,
@@ -17,48 +17,24 @@ import {
   UserCheck,
   Briefcase,
   Sparkles,
-  Building2,
-  Phone,
-  PhoneCall,
-  MessageCircle,
-  AlertTriangle,
-  Radio,
-  ExternalLink
+  Building2
 } from 'lucide-react';
-import { ContactDriverModal } from './ContactDriverModal';
 
 interface AdminPortalViewProps {
   employees: Employee[];
-  schedules?: WeeklySchedule[];
-  attendanceMap?: Record<string, DriverDailyAttendance>;
   onAddEmployee: (employee: Employee) => void;
   onUpdateEmployee: (employee: Employee) => void;
-  onRecordContact?: (
-    employeeId: string,
-    tipo: 'WhatsApp' | 'Llamada',
-    mensaje?: string,
-    respuesta?: string
-  ) => void;
-  onMarkShiftStarted?: (employeeId: string) => void;
 }
 
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   employees,
-  schedules = [],
-  attendanceMap = {},
   onAddEmployee,
   onUpdateEmployee,
-  onRecordContact,
-  onMarkShiftStarted,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('TODOS');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [contactingDriver, setContactingDriver] = useState<{
-    employee: Employee;
-    attendance?: DriverDailyAttendance;
-  } | null>(null);
 
   // Form State for Invitations
   const [nombre, setNombre] = useState('');
@@ -72,78 +48,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [cargo, setCargo] = useState('Repartidor Motorizado');
   const [departamento, setDepartamento] = useState<any>('Operaciones y Mensajería');
   const [salarioBase, setSalarioBase] = useState('1423500');
-
-  // Quick Action Handlers for Direct WhatsApp and Calling
-  const handleQuickWhatsApp = (emp: Employee, att?: DriverDailyAttendance) => {
-    const rawPhone = emp.telefono || '3000000000';
-    const cleanDigits = rawPhone.replace(/\D/g, '');
-    const waPhone = cleanDigits.length === 10 ? `57${cleanDigits}` : cleanDigits;
-    const clientName = att?.clienteNombre || 'Sede Asignada SERGEM';
-    const startTime = att?.horaInicioProgramada || '07:00 AM';
-
-    const defaultMsg = `¡Hola ${emp.nombre}! Te saludamos de SERGEM S.A.S. Te recordamos que tu turno de hoy con el cliente "${clientName}" estaba programado para iniciar a las ${startTime}. En nuestro sistema registramos que aún no has iniciado tu turno en el portal. Por favor ingresa a registrar tu jornada o comunícate de inmediato con nosotros si presentas alguna novedad.`;
-
-    const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(defaultMsg)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
-
-    if (onRecordContact) {
-      onRecordContact(emp.id, 'WhatsApp', defaultMsg);
-    }
-  };
-
-  const handleQuickCall = (emp: Employee) => {
-    const cleanDigits = (emp.telefono || '').replace(/\D/g, '');
-    window.location.href = `tel:${cleanDigits}`;
-
-    if (onRecordContact) {
-      onRecordContact(emp.id, 'Llamada', 'Llamada telefónica directa efectuada desde Portal Administrativo');
-    }
-  };
-
-  // Compute Live Drivers for Today
-  const driversAttendanceSummary = useMemo(() => {
-    const repartidores = employees.filter((e) => e.activo && e.rol === 'Repartidor');
-    
-    const unstarted: { employee: Employee; attendance?: DriverDailyAttendance }[] = [];
-    const connected: { employee: Employee; attendance?: DriverDailyAttendance }[] = [];
-    const offDuty: { employee: Employee; attendance?: DriverDailyAttendance }[] = [];
-
-    repartidores.forEach((rep) => {
-      const att = attendanceMap[rep.id];
-      if (att) {
-        if (att.estado === 'INICIADO') {
-          connected.push({ employee: rep, attendance: att });
-        } else if (att.estado === 'PENDIENTE_INICIO') {
-          unstarted.push({ employee: rep, attendance: att });
-        } else {
-          offDuty.push({ employee: rep, attendance: att });
-        }
-      } else {
-        // Look up if has schedule for Monday
-        const sched = schedules.find((s) => s.repartidorId === rep.id);
-        const shiftToday = sched?.dias['Lunes'];
-        if (shiftToday && shiftToday.tipo !== 'Descanso') {
-          unstarted.push({
-            employee: rep,
-            attendance: {
-              repartidorId: rep.id,
-              diaSemana: 'Lunes',
-              fecha: '2026-08-03',
-              estado: 'PENDIENTE_INICIO',
-              horaInicioProgramada: shiftToday.horaInicio1 || '07:00',
-              horaFinProgramada: shiftToday.horaFin1 || '15:00',
-              clienteNombre: shiftToday.clienteNombre || 'Cliente Asignado',
-              minutosRetraso: 15,
-            },
-          });
-        } else {
-          offDuty.push({ employee: rep });
-        }
-      }
-    });
-
-    return { unstarted, connected, offDuty, totalDrivers: repartidores.length };
-  }, [employees, schedules, attendanceMap]);
 
   // Available Jefes de Zona
   const jefesDeZona = employees.filter((e) => e.rol === 'Jefe de Zona');
@@ -307,160 +211,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         })}
       </div>
 
-      {/* Live Shift Connection & Attendance Monitoring Panel (Hoy) */}
-      <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center border border-red-200 shrink-0">
-              <Radio className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-extrabold text-slate-900">
-                  Monitoreo de Asistencia & Conexión en Vivo (Hoy)
-                </h3>
-                <span className="bg-red-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-md">
-                  En Tiempo Real
-                </span>
-              </div>
-              <p className="text-slate-500 text-xs font-medium">
-                Control de repartidores con turnos programados del día en curso. Notifica por WhatsApp o llama de inmediato a quienes no han iniciado jornada.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 text-xs font-bold">
-            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              <span>Conectados: <strong>{driversAttendanceSummary.connected.length}</strong></span>
-            </span>
-            <span className="bg-red-50 text-red-800 border border-red-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span>
-              <span>Sin Iniciar: <strong>{driversAttendanceSummary.unstarted.length}</strong></span>
-            </span>
-          </div>
-        </div>
-
-        {/* Unstarted Drivers Alert Cards */}
-        {driversAttendanceSummary.unstarted.length > 0 ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl">
-              <div className="flex items-center space-x-2 font-bold">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  {driversAttendanceSummary.unstarted.length} repartidor(es) tienen turno asignado hoy y <u>aún no han iniciado jornada</u> en el portal.
-                </span>
-              </div>
-              <span className="text-[11px] font-medium text-amber-700 hidden md:inline-block">
-                Comunícate de inmediato vía WhatsApp o llamada
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {driversAttendanceSummary.unstarted.map(({ employee: rep, attendance: att }) => {
-                const rawPhone = rep.telefono || 'Sin teléfono';
-                const startTime = att?.horaInicioProgramada || '07:00 AM';
-                const clientName = att?.clienteNombre || 'Sede asignada';
-                const delayMin = att?.minutosRetraso || 15;
-
-                return (
-                  <div
-                    key={rep.id}
-                    className="bg-white border-2 border-red-200/90 hover:border-red-400 rounded-xl p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between space-y-3"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center space-x-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-red-600 text-white font-black text-xs flex items-center justify-center">
-                            {rep.nombre.charAt(0)}{rep.apellido.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="font-extrabold text-slate-900 text-xs">
-                              {rep.nombre} {rep.apellido}
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
-                              C.C. {rep.cedula}
-                            </div>
-                          </div>
-                        </div>
-
-                        {rep.placaVehiculo && (
-                          <span className="font-mono font-black text-[11px] text-slate-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                            {rep.placaVehiculo}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-2.5 space-y-1 text-[11px]">
-                        <div className="flex items-center justify-between text-slate-700">
-                          <span className="font-medium text-slate-500">Cliente:</span>
-                          <span className="font-bold text-slate-900 truncate max-w-[150px]">{clientName}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-slate-700">
-                          <span className="font-medium text-slate-500">Hora Turno:</span>
-                          <span className="font-bold text-red-700 font-mono flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-red-600" />
-                            {startTime}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-slate-500">Estado:</span>
-                          <span className="font-black text-amber-700 bg-amber-100/70 px-1.5 py-0.5 rounded text-[10px] uppercase">
-                            Retraso (+{delayMin} min)
-                          </span>
-                        </div>
-                      </div>
-
-                      {att?.ultimoContacto && (
-                        <div className="mt-2 text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded truncate">
-                          Último contacto: {att.ultimoContacto.tipo} ({att.ultimoContacto.fechaHora})
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action Buttons for this driver */}
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                      <button
-                        onClick={() => handleQuickWhatsApp(rep, att)}
-                        title="Enviar mensaje WhatsApp"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1.5 text-xs transition-all cursor-pointer active:scale-95 shadow-2xs"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>WhatsApp</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleQuickCall(rep)}
-                        title="Llamar directamente por teléfono"
-                        className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-2.5 rounded-lg flex items-center justify-center space-x-1.5 text-xs transition-all cursor-pointer active:scale-95 shadow-2xs"
-                      >
-                        <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Llamar</span>
-                      </button>
-
-                      <button
-                        onClick={() => setContactingDriver({ employee: rep, attendance: att })}
-                        className="col-span-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-1.5 rounded-lg text-[11px] transition-all cursor-pointer flex items-center justify-center space-x-1"
-                      >
-                        <span>Opciones & Plantillas de Mensaje</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 flex items-center justify-between text-xs text-emerald-900">
-            <div className="flex items-center space-x-2 font-bold">
-              <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
-              <span>Todos los repartidores programados para hoy han iniciado su turno satisfactoriamente.</span>
-            </div>
-            <span className="text-[11px] text-emerald-700 font-semibold">100% de cumplimiento en jornada</span>
-          </div>
-        )}
-      </div>
-
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-80">
@@ -512,40 +262,24 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[950px]">
+          <table className="w-full text-left border-collapse min-w-[850px]">
             <thead className="bg-slate-100/90 text-slate-600 font-extrabold uppercase tracking-wider text-[11px] border-b border-slate-200">
               <tr>
                 <th className="py-3.5 px-5">Colaborador</th>
                 <th className="py-3.5 px-4">Rol Obligatorio</th>
                 <th className="py-3.5 px-4">Placa Vehículo</th>
                 <th className="py-3.5 px-4">Jefe de Zona</th>
-                <th className="py-3.5 px-4">Contacto Directo</th>
-                <th className="py-3.5 px-4 text-center">Estado / Jornada Hoy</th>
-                <th className="py-3.5 px-5 text-right">Acciones & Contacto</th>
+                <th className="py-3.5 px-4">Contacto</th>
+                <th className="py-3.5 px-4 text-center">Estado</th>
+                <th className="py-3.5 px-5 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/80 text-xs">
-              {filteredEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 px-4 text-center text-slate-500">
-                    <div className="flex flex-col items-center justify-center space-y-3">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                        <Users className="w-6 h-6" />
-                      </div>
-                      <div className="font-extrabold text-sm text-slate-700">No hay colaboradores registrados aún</div>
-                      <p className="text-xs text-slate-500 max-w-sm">
-                        Haz clic en "Invitar Nuevo Colaborador" para registrar miembros del equipo (Administrativos, Jefes de Zona, Jefes de Operaciones y Repartidores).
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredEmployees.map((emp) => {
-                  const jefeAsignado = employees.find((j) => j.id === emp.jefeZonaId);
-                  const att = attendanceMap[emp.id];
+              {filteredEmployees.map((emp) => {
+                const jefeAsignado = employees.find((j) => j.id === emp.jefeZonaId);
 
-                  return (
-                    <tr key={emp.id} className="hover:bg-slate-50/90 transition-colors">
+                return (
+                  <tr key={emp.id} className="hover:bg-slate-50/90 transition-colors">
                     {/* Colaborador */}
                     <td className="py-3.5 px-5">
                       <div className="flex items-center space-x-3">
@@ -614,90 +348,41 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <td className="py-3.5 px-4">
                       <div className="text-slate-800 text-xs">
                         <div className="font-semibold text-slate-800 truncate">{emp.email || 'correo@sergemsas.com'}</div>
-                        <div className="text-slate-700 font-mono font-bold text-[11px] flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3 text-slate-400" />
-                          <span>{emp.telefono || 'Sin teléfono'}</span>
-                        </div>
+                        <div className="text-slate-500 text-[11px] font-medium">{emp.telefono || 'Sin teléfono'}</div>
                       </div>
                     </td>
 
-                    {/* Estado / Conexión Hoy */}
+                    {/* Estado */}
                     <td className="py-3.5 px-4 text-center">
-                      {emp.rol === 'Repartidor' ? (
-                        att?.estado === 'INICIADO' ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-extrabold border whitespace-nowrap bg-emerald-50 text-emerald-800 border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                            En Turno ({att.horaConexionReal || 'Conectado'})
-                          </span>
-                        ) : att?.estado === 'PENDIENTE_INICIO' ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-extrabold border whitespace-nowrap bg-amber-100 text-amber-900 border-amber-300 animate-pulse">
-                            <AlertTriangle className="w-3.5 h-3.5 mr-1 text-amber-700" />
-                            Sin Iniciar ({att.horaInicioProgramada || '07:00'})
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-extrabold border whitespace-nowrap bg-slate-100 text-slate-700 border-slate-300">
-                            Activo
-                          </span>
-                        )
-                      ) : (
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-extrabold border whitespace-nowrap ${
-                            emp.estadoInvitacion === 'Activo' || emp.activo
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-blue-50 text-blue-800 border-blue-200'
-                          }`}
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                          {emp.estadoInvitacion || 'Activo'}
-                        </span>
-                      )}
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-extrabold border whitespace-nowrap ${
+                          emp.estadoInvitacion === 'Activo' || emp.activo
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : 'bg-blue-50 text-blue-800 border-blue-200'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                        {emp.estadoInvitacion || 'Activo'}
+                      </span>
                     </td>
 
-                    {/* Acciones & Contacto */}
+                    {/* Acciones */}
                     <td className="py-3.5 px-5 text-right">
-                      <div className="flex items-center justify-end space-x-1.5">
-                        {emp.rol === 'Repartidor' && (
-                          <>
-                            <button
-                              onClick={() => handleQuickWhatsApp(emp, att)}
-                              title="Enviar WhatsApp al Repartidor"
-                              className="p-2 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 hover:border-emerald-600 rounded-xl transition-all cursor-pointer active:scale-95 shadow-2xs"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                            </button>
-
-                            <button
-                              onClick={() => handleQuickCall(emp)}
-                              title="Llamar directamente al teléfono"
-                              className="p-2 bg-slate-100 hover:bg-slate-900 text-slate-700 hover:text-white border border-slate-300/80 rounded-xl transition-all cursor-pointer active:scale-95 shadow-2xs"
-                            >
-                              <PhoneCall className="w-4 h-4" />
-                            </button>
-
-                            <button
-                              onClick={() => setContactingDriver({ employee: emp, attendance: att })}
-                              title="Ver plantillas y detalles de contacto"
-                              className="px-2.5 py-1.5 bg-red-50 hover:bg-red-600 text-red-700 hover:text-white border border-red-200 rounded-xl transition-all text-[11px] font-bold cursor-pointer active:scale-95 shadow-2xs"
-                            >
-                              Contactar
-                            </button>
-                          </>
-                        )}
-
+                      <div className="flex items-center justify-end space-x-2">
                         <button
                           onClick={() => handleCopyInviteLink(emp)}
                           title="Copiar enlace de invitación"
-                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300/70 text-slate-700 rounded-xl transition-all flex items-center space-x-1 text-[11px] font-bold cursor-pointer active:scale-95 shadow-2xs"
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300/70 text-slate-700 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
                         >
                           {copiedId === emp.id ? (
                             <>
                               <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="text-emerald-700 font-extrabold">Copiado</span>
+                              <span className="text-emerald-700 font-extrabold">¡Copiado!</span>
                             </>
                           ) : (
                             <>
                               <Copy className="w-3.5 h-3.5 text-slate-600" />
-                              <span>Link</span>
+                              <span>Enlace</span>
                             </>
                           )}
                         </button>
@@ -705,8 +390,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </td>
                   </tr>
                 );
-              })
-              )}
+              })}
             </tbody>
           </table>
         </div>
@@ -898,18 +582,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </form>
           </div>
         </div>
-      )}
-      {/* Contact Driver Modal */}
-      {contactingDriver && (
-        <ContactDriverModal
-          employee={contactingDriver.employee}
-          attendance={contactingDriver.attendance}
-          callerRole="Administrativo"
-          callerName="Administración SERGEM S.A.S."
-          onClose={() => setContactingDriver(null)}
-          onRecordContact={onRecordContact}
-          onMarkShiftStarted={onMarkShiftStarted}
-        />
       )}
     </div>
   );

@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permisos para las colecciones operacionales y de nómina de SERGEM S.A.S.
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+    match /employees/{employeeId} {
+      allow read, write: if true;
+    }
+    match /schedules/{scheduleId} {
+      allow read, write: if true;
+    }
+    match /zoneNovedades/{novedadId} {
+      allow read, write: if true;
+    }
+    match /clientReports/{reportId} {
+      allow read, write: if true;
+    }
+    match /periods/{periodId} {
+      allow read, write: if true;
+    }
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+    match /periodNovedades/{periodId} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

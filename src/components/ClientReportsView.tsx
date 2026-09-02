@@ -20,10 +20,7 @@ import {
   Layers,
   Filter,
   CheckCircle2,
-  X,
-  Compass,
-  MapPin,
-  FileCheck
+  X
 } from 'lucide-react';
 
 interface ClientReportsViewProps {
@@ -46,10 +43,6 @@ export interface EmployeeClientSummary {
   horasExtrasDiurnas: number;
   horasExtrasNocturnas: number;
   horasFestivas: number;
-  recargoNocturno: number;
-  recargoFestivo: number;
-  salidasFueraPerimetro: number;
-  valorFueraPerimetro: number;
   paquetesEntregados: number;
   ventaNeta: number;
 }
@@ -139,10 +132,6 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
           horasExtrasDiurnas: 0,
           horasExtrasNocturnas: 0,
           horasFestivas: 0,
-          recargoNocturno: 0,
-          recargoFestivo: 0,
-          salidasFueraPerimetro: 0,
-          valorFueraPerimetro: 0,
           paquetesEntregados: 0,
           ventaNeta: 0,
         });
@@ -154,15 +143,11 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
       item.horasExtrasDiurnas += r.horasExtrasDiurnas;
       item.horasExtrasNocturnas += r.horasExtrasNocturnas;
       item.horasFestivas += r.horasFestivas;
-      item.recargoNocturno += r.recargoNocturno || 0;
-      item.recargoFestivo += r.recargoFestivo || 0;
-      item.salidasFueraPerimetro += r.salidasFueraPerimetro || 0;
-      item.valorFueraPerimetro += r.valorFueraPerimetro || 0;
       item.paquetesEntregados += r.paquetesEntregados;
       item.ventaNeta += r.ventaNeta;
     });
 
-    // Also incorporate WeeklySchedule shifts for any employee
+    // Also include schedule data from WeeklySchedules if not covered
     schedules.forEach((sch) => {
       const emp = employeeMap.get(sch.repartidorId);
       if (!emp) return;
@@ -174,6 +159,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
         const clientName = shift.clienteNombre || 'Almacenes Éxito S.A.';
         const key = `${sch.repartidorId}___${clientName}`;
 
+        // Calculate hours for this shift
         let dayHours = 8;
         if (shift.tipo === 'Partido') {
           dayHours = 8;
@@ -188,6 +174,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
           const doc = emp.cedula || '1.098.765.432';
           const repName = `${emp.nombre} ${emp.apellido}`;
           const placa = emp.placaVehiculo || 'VTX-89D';
+
           const breakdown = calculateHoursBreakdown(dayHours, sch.semanaInicio);
 
           map.set(key, {
@@ -201,10 +188,6 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
             horasExtrasDiurnas: breakdown.horasExtrasDiurnas,
             horasExtrasNocturnas: breakdown.horasExtrasNocturnas,
             horasFestivas: breakdown.horasFestivas,
-            recargoNocturno: 0,
-            recargoFestivo: 0,
-            salidasFueraPerimetro: 0,
-            valorFueraPerimetro: 0,
             paquetesEntregados: 35,
             ventaNeta: 1250000,
           });
@@ -243,13 +226,8 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
   // Totals for Summaries
   const totalSummaryHoras = filteredSummaries.reduce((acc, s) => acc + s.horasTrabajadas, 0);
   const totalSummaryOrdinarias = filteredSummaries.reduce((acc, s) => acc + s.horasOrdinarias, 0);
-  const totalSummaryExtrasDiurnas = filteredSummaries.reduce((acc, s) => acc + s.horasExtrasDiurnas, 0);
-  const totalSummaryExtrasNocturnas = filteredSummaries.reduce((acc, s) => acc + s.horasExtrasNocturnas, 0);
+  const totalSummaryExtras = filteredSummaries.reduce((acc, s) => acc + s.horasExtrasDiurnas + s.horasExtrasNocturnas, 0);
   const totalSummaryFestivas = filteredSummaries.reduce((acc, s) => acc + s.horasFestivas, 0);
-  const totalSummaryRecargoNocturno = filteredSummaries.reduce((acc, s) => acc + s.recargoNocturno, 0);
-  const totalSummaryRecargoFestivo = filteredSummaries.reduce((acc, s) => acc + s.recargoFestivo, 0);
-  const totalSummarySalidasFuera = filteredSummaries.reduce((acc, s) => acc + s.salidasFueraPerimetro, 0);
-  const totalSummaryValorFuera = filteredSummaries.reduce((acc, s) => acc + s.valorFueraPerimetro, 0);
   const totalSummaryPaquetes = filteredSummaries.reduce((acc, s) => acc + s.paquetesEntregados, 0);
   const totalSummaryVentaNeta = filteredSummaries.reduce((acc, s) => acc + s.ventaNeta, 0);
 
@@ -257,10 +235,10 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
   const totalVentaNeta = filteredReports.reduce((acc, r) => acc + r.ventaNeta, 0);
   const totalPaquetes = filteredReports.reduce((acc, r) => acc + r.paquetesEntregados, 0);
   const totalHoras = filteredReports.reduce((acc, r) => acc + r.horasTrabajadas, 0);
-  const totalSalidasFuera = filteredReports.reduce((acc, r) => acc + (r.salidasFueraPerimetro || 0), 0);
-  const totalValorFuera = filteredReports.reduce((acc, r) => acc + (r.valorFueraPerimetro || 0), 0);
 
-  // EXPORT CSV
+  // ================= EXPORT FUNCTIONS ================= //
+
+  // 1. Export CSV (UTF-8 with BOM for Excel compatibility)
   const handleExportCSV = () => {
     let headers: string[] = [];
     let rows: (string | number)[][] = [];
@@ -273,15 +251,11 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
         'Cliente',
         'Horas Trabajadas',
         'Horas Ordinarias (42h)',
-        'Extras Diurnas (+25%)',
-        'Extras Nocturnas (+75%)',
-        'Dominicales / Festivas (+100%)',
-        'Recargo Nocturno (+35%)',
-        'Recargo Festivo (+75%)',
-        'Salidas Fuera Perímetro (Cant)',
-        'Valor Fuera Perímetro ($ COP)',
+        'Extras Diurnas (25%)',
+        'Extras Nocturnas (75%)',
+        'Horas Festivas (100%)',
         'Paquetes Entregados',
-        'Venta Neta ($ COP)',
+        'Venta Neta ($ COP)'
       ];
 
       rows = filteredSummaries.map((s) => [
@@ -294,10 +268,6 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
         s.horasExtrasDiurnas,
         s.horasExtrasNocturnas,
         s.horasFestivas,
-        s.recargoNocturno,
-        s.recargoFestivo,
-        s.salidasFueraPerimetro,
-        s.valorFueraPerimetro,
         s.paquetesEntregados,
         s.ventaNeta,
       ]);
@@ -308,17 +278,13 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
         'ID Repartidor',
         'Cédula',
         'Repartidor',
-        'Placa Vehículo',
+        'Placa Vehiculo',
         'Fecha',
         'Horas Trab.',
         'Horas Ord. (42h)',
-        'Extras Diurnas (+25%)',
-        'Extras Nocturnas (+75%)',
-        'Dominicales/Festivas (+100%)',
-        'Recargo Noct. (+35%)',
-        'Recargo Fest. (+75%)',
-        'Salidas Fuera Perímetro (Cant)',
-        'Valor Fuera Perímetro ($ COP)',
+        'Extras Diurnas (25%)',
+        'Extras Nocturnas (75%)',
+        'Festivas (100%)',
         'Paquetes',
         'Venta Neta ($ COP)',
       ];
@@ -338,10 +304,6 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
           r.horasExtrasDiurnas,
           r.horasExtrasNocturnas,
           r.horasFestivas,
-          r.recargoNocturno || 0,
-          r.recargoFestivo || 0,
-          r.salidasFueraPerimetro || 0,
-          r.valorFueraPerimetro || 0,
           r.paquetesEntregados,
           r.ventaNeta,
         ];
@@ -349,7 +311,8 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
     }
 
     const csvContent =
-      '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      '\uFEFF' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -361,7 +324,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
     document.body.removeChild(link);
   };
 
-  // EXPORT EXCEL HTML
+  // 2. Export Excel (.XLS) HTML Spreadsheet Format
   const handleExportExcel = () => {
     const isEmployeeView = activeSubTab === 'por_empleado';
     const period = getMonthYearString();
@@ -375,20 +338,16 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
       tableHTML = `
         <table border="1" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 11px;">
           <thead>
-            <tr style="background-color: #991b1b; color: #ffffff; font-weight: bold; text-align: center;">
+            <tr style="background-color: #064e3b; color: #ffffff; font-weight: bold; text-align: center;">
               <th style="padding: 8px;">Cédula</th>
               <th style="padding: 8px;">Nombre Repartidor</th>
               <th style="padding: 8px;">Placa</th>
-              <th style="padding: 8px;">Cliente / Sede</th>
-              <th style="padding: 8px;">Horas Trab.</th>
+              <th style="padding: 8px;">Cliente / Sede Operativa</th>
+              <th style="padding: 8px;">Horas Trabajadas</th>
               <th style="padding: 8px;">Horas Ord. (42h)</th>
-              <th style="padding: 8px;">HED (+25%)</th>
-              <th style="padding: 8px;">HEN (+75%)</th>
-              <th style="padding: 8px;">Dom/Fest (+100%)</th>
-              <th style="padding: 8px;">Rec. Noct. (+35%)</th>
-              <th style="padding: 8px;">Rec. Fest. (+75%)</th>
-              <th style="padding: 8px;">Salidas Fuera Perímetro</th>
-              <th style="padding: 8px;">Valor Fuera Perímetro ($)</th>
+              <th style="padding: 8px;">Extras Diurnas (+25%)</th>
+              <th style="padding: 8px;">Extras Nocturnas (+75%)</th>
+              <th style="padding: 8px;">Festivas / Dominicales (+100%)</th>
               <th style="padding: 8px;">Paquetes</th>
               <th style="padding: 8px;">Venta Neta ($ COP)</th>
             </tr>
@@ -407,10 +366,6 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
                 <td style="padding: 6px; text-align: center; color: #1e40af;">${s.horasExtrasDiurnas}h</td>
                 <td style="padding: 6px; text-align: center; color: #3730a3;">${s.horasExtrasNocturnas}h</td>
                 <td style="padding: 6px; text-align: center; color: #581c87;">${s.horasFestivas}h</td>
-                <td style="padding: 6px; text-align: center;">${s.recargoNocturno}h</td>
-                <td style="padding: 6px; text-align: center;">${s.recargoFestivo}h</td>
-                <td style="padding: 6px; text-align: center; font-weight: bold; color: #b45309;">${s.salidasFueraPerimetro}</td>
-                <td style="padding: 6px; text-align: right; font-weight: bold; color: #b45309;">$${s.valorFueraPerimetro.toLocaleString('es-CO')}</td>
                 <td style="padding: 6px; text-align: center;">${s.paquetesEntregados}</td>
                 <td style="padding: 6px; text-align: right; font-weight: bold;">$${s.ventaNeta.toLocaleString('es-CO')}</td>
               </tr>
@@ -419,17 +374,13 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
               .join('')}
           </tbody>
           <tfoot>
-            <tr style="background-color: #fef2f2; font-weight: bold; text-align: center; border-top: 2px solid #b91c1c;">
+            <tr style="background-color: #ecfdf5; font-weight: bold; text-align: center; border-top: 2px solid #047857;">
               <td colspan="4" style="padding: 10px; text-align: right;">TOTALES GENERALES:</td>
-              <td style="padding: 10px; font-size: 12px; color: #b91c1c;">${totalSummaryHoras} hrs</td>
+              <td style="padding: 10px; font-size: 12px; color: #047857;">${totalSummaryHoras} hrs</td>
               <td style="padding: 10px;">${totalSummaryOrdinarias}h</td>
-              <td style="padding: 10px;">${totalSummaryExtrasDiurnas}h</td>
-              <td style="padding: 10px;">${totalSummaryExtrasNocturnas}h</td>
+              <td style="padding: 10px;">${totalSummaryExtras}h</td>
+              <td style="padding: 10px;">-</td>
               <td style="padding: 10px;">${totalSummaryFestivas}h</td>
-              <td style="padding: 10px;">${totalSummaryRecargoNocturno}h</td>
-              <td style="padding: 10px;">${totalSummaryRecargoFestivo}h</td>
-              <td style="padding: 10px; color: #b45309;">${totalSummarySalidasFuera}</td>
-              <td style="padding: 10px; text-align: right; color: #b45309;">$${totalSummaryValorFuera.toLocaleString('es-CO')}</td>
               <td style="padding: 10px;">${totalSummaryPaquetes}</td>
               <td style="padding: 10px; text-align: right;">$${totalSummaryVentaNeta.toLocaleString('es-CO')} COP</td>
             </tr>
@@ -440,21 +391,17 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
       tableHTML = `
         <table border="1" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 11px;">
           <thead>
-            <tr style="background-color: #991b1b; color: #ffffff; font-weight: bold; text-align: center;">
+            <tr style="background-color: #064e3b; color: #ffffff; font-weight: bold; text-align: center;">
               <th style="padding: 8px;">Cliente</th>
               <th style="padding: 8px;">Cédula</th>
               <th style="padding: 8px;">Repartidor</th>
               <th style="padding: 8px;">Placa</th>
               <th style="padding: 8px;">Fecha</th>
               <th style="padding: 8px;">Horas Trab.</th>
-              <th style="padding: 8px;">Horas Ord. (42h)</th>
-              <th style="padding: 8px;">HED</th>
-              <th style="padding: 8px;">HEN</th>
-              <th style="padding: 8px;">Dom/Fest</th>
-              <th style="padding: 8px;">Rec. Noct.</th>
-              <th style="padding: 8px;">Rec. Fest.</th>
-              <th style="padding: 8px;">Fuera Perímetro (Cant)</th>
-              <th style="padding: 8px;">Valor Fuera Perímetro ($)</th>
+              <th style="padding: 8px;">Horas Ord.</th>
+              <th style="padding: 8px;">Extras Diurnas</th>
+              <th style="padding: 8px;">Extras Nocturnas</th>
+              <th style="padding: 8px;">Festivas</th>
               <th style="padding: 8px;">Paquetes</th>
               <th style="padding: 8px;">Venta Neta ($ COP)</th>
             </tr>
@@ -475,10 +422,6 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
                 <td style="padding: 6px; text-align: center;">${r.horasExtrasDiurnas}h</td>
                 <td style="padding: 6px; text-align: center;">${r.horasExtrasNocturnas}h</td>
                 <td style="padding: 6px; text-align: center;">${r.horasFestivas}h</td>
-                <td style="padding: 6px; text-align: center;">${r.recargoNocturno || 0}h</td>
-                <td style="padding: 6px; text-align: center;">${r.recargoFestivo || 0}h</td>
-                <td style="padding: 6px; text-align: center; font-weight: bold; color: #b45309;">${r.salidasFueraPerimetro || 0}</td>
-                <td style="padding: 6px; text-align: right; font-weight: bold; color: #b45309;">$${(r.valorFueraPerimetro || 0).toLocaleString('es-CO')}</td>
                 <td style="padding: 6px; text-align: center;">${r.paquetesEntregados}</td>
                 <td style="padding: 6px; text-align: right; font-weight: bold;">$${r.ventaNeta.toLocaleString('es-CO')}</td>
               </tr>
@@ -487,12 +430,10 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
               .join('')}
           </tbody>
           <tfoot>
-            <tr style="background-color: #fef2f2; font-weight: bold; text-align: center;">
+            <tr style="background-color: #ecfdf5; font-weight: bold; text-align: center;">
               <td colspan="5" style="padding: 10px; text-align: right;">TOTALES:</td>
               <td style="padding: 10px;">${totalHoras} hrs</td>
-              <td colspan="6"></td>
-              <td style="padding: 10px; color: #b45309;">${totalSalidasFuera}</td>
-              <td style="padding: 10px; text-align: right; color: #b45309;">$${totalValorFuera.toLocaleString('es-CO')}</td>
+              <td colspan="4"></td>
               <td style="padding: 10px;">${totalPaquetes}</td>
               <td style="padding: 10px; text-align: right;">$${totalVentaNeta.toLocaleString('es-CO')} COP</td>
             </tr>
@@ -505,12 +446,26 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta charset="utf-8" />
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Reporte Clientes</x:Name>
+                <x:WorksheetOptions>
+                  <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
       </head>
       <body>
         <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h2 style="color: #991b1b; margin-bottom: 5px;">SERGEM MENSAJERIA Y LOGISTICA S.A.S.</h2>
-          <p style="font-size: 12px; color: #475569; margin-top: 0;">NIT: 900.398.712-4 | Sistema de Operaciones & Reporte Consolidado 2026</p>
-          <h3 style="color: #0f172a; border-bottom: 2px solid #dc2626; padding-bottom: 5px; margin-top: 15px;">${reportTitle}</h3>
+          <h2 style="color: #064e3b; margin-bottom: 5px;">SERGEM MENSAJERIA Y LOGISTICA S.A.S.</h2>
+          <p style="font-size: 12px; color: #475569; margin-top: 0;">NIT: 901.589.432-1 | Sistema de Gestión de Operaciones 2026</p>
+          <h3 style="color: #0f172a; border-bottom: 2px solid #047857; padding-bottom: 5px; margin-top: 15px;">${reportTitle}</h3>
           <p style="font-size: 11px; color: #64748b;">Fecha de Generación: ${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO')}</p>
           <br />
           ${tableHTML}
@@ -529,186 +484,181 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
     document.body.removeChild(link);
   };
 
+  // 3. Export / Print PDF
   const handlePrintPDF = () => {
     setShowPrintModal(true);
+    setTimeout(() => {
+      window.print();
+    }, 500);
   };
-
-  const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   return (
     <div id="client-reports-view" className="space-y-6">
-      {/* Header Banner */}
+      {/* Header Banner - Light Slate Grey Premium Design */}
       <div className="relative overflow-hidden bg-gradient-to-b from-slate-100/90 to-slate-200/60 text-slate-900 rounded-2xl p-7 md:p-8 shadow-xs border border-slate-300/80 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="space-y-2 max-w-3xl">
           <div className="inline-flex items-center space-x-2 bg-white border border-slate-300/80 text-red-700 font-extrabold text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-xl shadow-2xs">
-            <Building2 className="w-4 h-4 text-red-600" />
-            <span>Operaciones & Liquidación de Clientes</span>
+            <Sparkles className="w-4 h-4 text-red-600" />
+            <span>Reportes de Operación & Venta Neta por Cliente</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-            Reportes Operativos de Clientes & Consolidado de Turnos
+            Reporte de Clientes, Repartidores y Horas Reforma 2026
           </h2>
           <p className="text-slate-600 text-xs md:text-sm font-medium leading-relaxed">
-            Consulte la liquidación consolidada por empleado y cliente: horas ordinarias (base 42h), horas extras diurnas/nocturnas, dominicales/festivas, recargos nocturnos, recargos festivos y salidas fuera del perímetro urbano (extra-radio).
+            Consolidado operativo detallado con vinculación de Cédula de Ciudadanía, Nombre del Repartidor, Placa de Vehículo, Cliente asignado y cálculo de horas laboradas conforme a la Ley 2101 (Jornada Máxima 42h/semana) en Colombia.
           </p>
         </div>
 
-        {/* Action Buttons */}
+        {/* 3 Download / Export Buttons */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center space-x-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-4 py-2.5 rounded-xl font-bold text-xs shadow-2xs transition-all cursor-pointer hover:border-slate-400"
-          >
-            <Download className="w-4 h-4 text-slate-600" />
-            <span>Exportar CSV</span>
-          </button>
-
-          <button
             onClick={handleExportExcel}
-            className="inline-flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center space-x-2 shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+            title="Descargar en formato Excel (.XLS)"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>Exportar Excel</span>
+            <span>Descargar XLS</span>
           </button>
 
           <button
             onClick={handlePrintPDF}
-            className="inline-flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-md shadow-red-600/20 transition-all cursor-pointer active:scale-95"
+            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center space-x-2 shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+            title="Generar o Imprimir Reporte PDF"
           >
             <Printer className="w-4 h-4" />
-            <span>Imprimir / Guardar PDF</span>
+            <span>Descargar PDF</span>
+          </button>
+
+          <button
+            onClick={handleExportCSV}
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold rounded-xl text-xs flex items-center space-x-2 shadow-md border border-slate-700 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+            title="Descargar archivo CSV estructurado UTF-8"
+          >
+            <Download className="w-4 h-4" />
+            <span>Descargar CSV</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Horas Registradas</span>
-            <div className="flex items-baseline space-x-1">
-              <span className="text-2xl font-black text-slate-900 font-mono">
-                {activeSubTab === 'por_empleado' ? totalSummaryHoras : totalHoras}
-              </span>
-              <span className="text-xs text-slate-500 font-bold">hrs</span>
+      {/* Aggregate Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Total Horas por Cliente</span>
+            <div className="p-2.5 bg-purple-100 text-purple-700 rounded-xl">
+              <Clock className="w-5 h-5" />
             </div>
           </div>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {activeSubTab === 'por_empleado' ? totalSummaryHoras : totalHoras} <span className="text-xs text-slate-500 font-sans font-normal">hrs</span>
+          </div>
+          <span className="text-[11px] text-purple-700 font-semibold flex items-center gap-1 mt-1">
+            <span>{activeSubTab === 'por_empleado' ? totalSummaryOrdinarias : totalHoras}h Ordinarias</span>
+            <span>•</span>
+            <span>{activeSubTab === 'por_empleado' ? totalSummaryExtras : 0}h Extras</span>
+          </span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200 flex items-center justify-center shrink-0">
-            <Package className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Paquetes Entregados</span>
-            <div className="flex items-baseline space-x-1">
-              <span className="text-2xl font-black text-slate-900 font-mono">
-                {activeSubTab === 'por_empleado' ? totalSummaryPaquetes : totalPaquetes}
-              </span>
-              <span className="text-xs text-slate-500 font-bold">unidades</span>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Repartidores Activos</span>
+            <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl">
+              <Users className="w-5 h-5" />
             </div>
           </div>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {new Set(filteredSummaries.map((s) => s.repartidorId)).size}
+          </div>
+          <span className="text-[11px] text-indigo-600 font-semibold mt-1 block">
+            Con asignación en clientes
+          </span>
         </div>
 
-        {/* KPI SALIDAS FUERA DE PERÍMETRO */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
-            <Compass className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block">Fuera del Perímetro</span>
-            <div className="flex items-baseline space-x-1.5">
-              <span className="text-2xl font-black text-amber-950 font-mono">
-                {activeSubTab === 'por_empleado' ? totalSummarySalidasFuera : totalSalidasFuera}
-              </span>
-              <span className="text-xs text-amber-700 font-bold">
-                (${(activeSubTab === 'por_empleado' ? totalSummaryValorFuera : totalValorFuera).toLocaleString('es-CO')})
-              </span>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Paquetes Entregados</span>
+            <div className="p-2.5 bg-blue-100 text-blue-700 rounded-xl">
+              <Package className="w-5 h-5" />
             </div>
           </div>
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            {(activeSubTab === 'por_empleado' ? totalSummaryPaquetes : totalPaquetes).toLocaleString('es-CO')}
+          </div>
+          <span className="text-[11px] text-blue-600 font-semibold mt-1 block">Unidades gestionadas</span>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center shrink-0">
-            <Sparkles className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-purple-800 uppercase tracking-wider block">Extras & Recargos</span>
-            <div className="flex items-baseline space-x-1">
-              <span className="text-2xl font-black text-purple-950 font-mono">
-                {totalSummaryExtrasDiurnas + totalSummaryExtrasNocturnas + totalSummaryFestivas}
-              </span>
-              <span className="text-xs text-purple-700 font-bold">hrs</span>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Venta Neta ($ COP)</span>
+            <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-xl">
+              <DollarSign className="w-5 h-5" />
             </div>
           </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shrink-0">
-            <DollarSign className="w-6 h-6" />
+          <div className="text-2xl font-black text-slate-900 font-mono">
+            ${(activeSubTab === 'por_empleado' ? totalSummaryVentaNeta : totalVentaNeta).toLocaleString('es-CO')}
           </div>
-          <div>
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Venta Neta Total</span>
-            <div className="flex items-baseline space-x-1">
-              <span className="text-xl font-black text-emerald-700 font-mono">
-                ${(activeSubTab === 'por_empleado' ? totalSummaryVentaNeta : totalVentaNeta).toLocaleString('es-CO')}
-              </span>
-            </div>
-          </div>
+          <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">Facturación operativa</span>
         </div>
       </div>
 
-      {/* Sub Tabs and Filters Navigation */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* SubTab Switcher */}
-        <div className="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0 w-full md:w-auto">
+      {/* Subtab Selector & Filters Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+        {/* Subtabs Toggle */}
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
           <button
             onClick={() => setActiveSubTab('por_empleado')}
-            className={`flex-1 md:flex-none px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+            className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
               activeSubTab === 'por_empleado'
-                ? 'bg-white text-red-700 shadow-xs'
+                ? 'bg-red-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>Por Empleado (Consolidado de Turnos)</span>
+            <Users className={`w-4 h-4 ${activeSubTab === 'por_empleado' ? 'text-white' : 'text-slate-600'}`} />
+            <span>Reporte por Empleado (Cédula - Cliente - Horas)</span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('por_registro')}
-            className={`flex-1 md:flex-none px-4 py-2 text-xs font-black rounded-lg transition-all cursor-pointer flex items-center justify-center space-x-2 ${
+            className={`px-4 py-2 rounded-xl font-extrabold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
               activeSubTab === 'por_registro'
-                ? 'bg-white text-red-700 shadow-xs'
+                ? 'bg-red-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Layers className="w-4 h-4" />
-            <span>Detalle por Operación / Registro</span>
+            <Layers className={`w-4 h-4 ${activeSubTab === 'por_registro' ? 'text-white' : 'text-slate-600'}`} />
+            <span>Reporte General por Operación</span>
           </button>
         </div>
 
-        {/* Filter Inputs */}
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Search & Select Filters */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar por cédula, repartidor, placa o cliente..."
+              placeholder="Buscar Cédula, Nombre, Placa o Cliente..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-red-500"
+              className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
             />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700">
-            <Filter className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cliente:</span>
+          {/* Client Filter */}
+          <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-300 text-xs">
+            <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
             <select
               value={clientFilter}
               onChange={(e) => setClientFilter(e.target.value)}
-              className="bg-transparent font-bold text-slate-900 focus:outline-hidden cursor-pointer"
+              className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
             >
               <option value="TODOS">Todos los Clientes</option>
               {uniqueClients.map((cli) => (
@@ -718,307 +668,287 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
               ))}
             </select>
           </div>
+
+          {activeSubTab === 'por_registro' && (
+            <div className="flex items-center space-x-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-300 text-xs">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="bg-transparent font-mono font-bold text-slate-800 text-xs focus:outline-hidden"
+              />
+              {dateFilter && (
+                <button
+                  onClick={() => setDateFilter('')}
+                  className="text-rose-600 font-bold hover:underline text-[11px] cursor-pointer"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* VIEW 1: REPORTE POR EMPLEADO CON CONSOLIDADO DE TURNOS Y DESGLOSE COMPLETO */}
+      {/* ================= TABLE VIEW 1: REPORTE POR EMPLEADO ================= */}
       {activeSubTab === 'por_empleado' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Users className="w-5 h-5 text-red-600" />
-              <h3 className="font-black text-sm text-slate-900 uppercase">
-                Consolidado de Turnos y Producción por Empleado ({filteredSummaries.length})
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-extrabold text-sm text-slate-900 flex items-center space-x-2">
+                <CreditCard className="w-4 h-4 text-indigo-600" />
+                <span>Reporte de Horas Trabajadas por Empleado y Cliente ({filteredSummaries.length} registros)</span>
               </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Columnas ordenadas: Cédula, Nombre del Repartidor, Placa Vehículo, Cliente y Horas Trabajadas para ese Cliente.
+              </p>
             </div>
-            <span className="text-xs font-bold text-slate-500">
-              Período: <strong>{getMonthYearString()}</strong>
-            </span>
+
+            <div className="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shrink-0">
+              Total Registros: <span className="text-indigo-600 font-mono font-extrabold">{filteredSummaries.length}</span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100/80 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
+              <thead className="bg-slate-100 text-slate-700 font-extrabold uppercase tracking-wider text-[10px] border-b border-slate-200">
                 <tr>
-                  <th className="p-3.5 pl-6">Cédula & Repartidor</th>
-                  <th className="p-3.5">Placa</th>
-                  <th className="p-3.5">Cliente Asignado</th>
-                  <th className="p-3.5 text-center">Horas Totales</th>
-                  <th className="p-3.5 text-center">Ord. (42h)</th>
-                  <th className="p-3.5 text-center text-blue-900">HED (+25%)</th>
-                  <th className="p-3.5 text-center text-indigo-900">HEN (+75%)</th>
-                  <th className="p-3.5 text-center text-purple-900">Dom/Fest (+100%)</th>
-                  <th className="p-3.5 text-center text-indigo-800">Rec. Noct. (+35%)</th>
-                  <th className="p-3.5 text-center text-purple-800">Rec. Fest. (+75%)</th>
-                  <th className="p-3.5 text-center text-amber-900 bg-amber-50/50">Fuera Perímetro</th>
+                  <th className="p-3.5 pl-6">1. Cédula</th>
+                  <th className="p-3.5">2. Nombre del Repartidor</th>
+                  <th className="p-3.5">3. Placa</th>
+                  <th className="p-3.5">4. Cliente / Sede Operativa</th>
+                  <th className="p-3.5 text-center">5. Horas Trabajadas</th>
+                  <th className="p-3.5 text-center">Desglose Horas (Ley 2101)</th>
                   <th className="p-3.5 text-center">Paquetes</th>
-                  <th className="p-3.5 pr-6 text-right">Venta Neta ($)</th>
+                  <th className="p-3.5 pr-6 text-right">Venta Neta ($ COP)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 font-medium">
+              <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
                 {filteredSummaries.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="p-8 text-center text-slate-400 italic">
-                      No hay registros consolidados para los filtros seleccionados.
+                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                      No se encontraron registros de horas por empleado para el filtro seleccionado.
                     </td>
                   </tr>
                 ) : (
-                  filteredSummaries.map((summary, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3.5 pl-6">
-                        <div className="font-bold text-slate-900 text-sm">{summary.nombreRepartidor}</div>
-                        <div className="text-[11px] font-mono text-slate-500 font-bold">
-                          C.C. {summary.documento}
-                        </div>
-                      </td>
-
-                      <td className="p-3.5">
-                        <span className="font-mono font-bold bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
-                          {summary.placaVehiculo}
+                  filteredSummaries.map((sum, idx) => (
+                    <tr
+                      key={`${sum.repartidorId}-${sum.nombreCliente}-${idx}`}
+                      className="hover:bg-indigo-50/40 transition-colors"
+                    >
+                      {/* 1. Cédula */}
+                      <td className="p-3.5 pl-6 font-mono font-bold text-slate-900">
+                        <span className="bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-lg text-xs">
+                          {sum.documento}
                         </span>
                       </td>
 
+                      {/* 2. Nombre Repartidor */}
                       <td className="p-3.5">
-                        <span className="font-semibold text-slate-800">{summary.nombreCliente}</span>
+                        <div className="font-extrabold text-slate-900 text-sm">{sum.nombreRepartidor}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">ID: {sum.repartidorId}</div>
                       </td>
 
-                      <td className="p-3.5 text-center font-black text-slate-900 text-sm font-mono">
-                        {summary.horasTrabajadas} hrs
+                      {/* 3. Placa */}
+                      <td className="p-3.5">
+                        <span className="inline-flex items-center space-x-1 font-mono font-extrabold bg-amber-50 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-lg text-xs shadow-2xs">
+                          <Truck className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{sum.placaVehiculo}</span>
+                        </span>
                       </td>
 
-                      <td className="p-3.5 text-center font-mono font-bold text-slate-700">
-                        {summary.horasOrdinarias}h
+                      {/* 4. Cliente */}
+                      <td className="p-3.5">
+                        <div className="font-bold text-indigo-950 text-xs flex items-center space-x-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>{sum.nombreCliente}</span>
+                        </div>
                       </td>
 
-                      <td className="p-3.5 text-center font-mono font-bold text-blue-800">
-                        {summary.horasExtrasDiurnas > 0 ? `${summary.horasExtrasDiurnas}h` : '-'}
+                      {/* 5. Horas Trabajadas para ese Cliente */}
+                      <td className="p-3.5 text-center">
+                        <span className="inline-block px-3 py-1 bg-indigo-100 border border-indigo-200 text-indigo-950 font-black text-sm rounded-xl font-mono shadow-2xs">
+                          {sum.horasTrabajadas} hrs
+                        </span>
                       </td>
 
-                      <td className="p-3.5 text-center font-mono font-bold text-indigo-800">
-                        {summary.horasExtrasNocturnas > 0 ? `${summary.horasExtrasNocturnas}h` : '-'}
-                      </td>
-
-                      <td className="p-3.5 text-center font-mono font-bold text-purple-800">
-                        {summary.horasFestivas > 0 ? `${summary.horasFestivas}h` : '-'}
-                      </td>
-
-                      <td className="p-3.5 text-center font-mono font-bold text-indigo-600">
-                        {summary.recargoNocturno > 0 ? `${summary.recargoNocturno}h` : '-'}
-                      </td>
-
-                      <td className="p-3.5 text-center font-mono font-bold text-purple-600">
-                        {summary.recargoFestivo > 0 ? `${summary.recargoFestivo}h` : '-'}
-                      </td>
-
-                      {/* SALIDAS FUERA DE PERÍMETRO */}
-                      <td className="p-3.5 text-center bg-amber-50/40">
-                        {summary.salidasFueraPerimetro > 0 ? (
-                          <div className="inline-flex flex-col items-center">
-                            <span className="font-black text-amber-950 font-mono text-xs">
-                              {summary.salidasFueraPerimetro} salidas
+                      {/* Desglose Horas */}
+                      <td className="p-3.5 text-center">
+                        <div className="inline-flex flex-wrap justify-center gap-1 text-[10px]">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md font-semibold border border-slate-200">
+                            Ord: {sum.horasOrdinarias}h
+                          </span>
+                          {sum.horasExtrasDiurnas > 0 && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-900 rounded-md font-bold">
+                              HED: {sum.horasExtrasDiurnas}h
                             </span>
-                            <span className="text-[10px] text-amber-800 font-bold font-mono">
-                              ${summary.valorFueraPerimetro.toLocaleString('es-CO')}
+                          )}
+                          {sum.horasExtrasNocturnas > 0 && (
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 rounded-md font-bold">
+                              HEN: {sum.horasExtrasNocturnas}h
                             </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
+                          )}
+                          {sum.horasFestivas > 0 && (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-900 rounded-md font-bold">
+                              Fest: {sum.horasFestivas}h
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      <td className="p-3.5 text-center font-bold text-slate-900 font-mono">
-                        {summary.paquetesEntregados}
+                      {/* Paquetes */}
+                      <td className="p-3.5 text-center font-bold text-slate-700">
+                        {sum.paquetesEntregados}
                       </td>
 
+                      {/* Venta Neta */}
                       <td className="p-3.5 pr-6 text-right font-black text-slate-900 text-xs font-mono">
-                        ${summary.ventaNeta.toLocaleString('es-CO')} COP
+                        ${sum.ventaNeta.toLocaleString('es-CO')}
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
-              {filteredSummaries.length > 0 && (
-                <tfoot className="bg-slate-100 font-black text-slate-900 text-xs border-t-2 border-slate-300">
-                  <tr>
-                    <td colSpan={3} className="p-3.5 pl-6 text-right uppercase">Totales Generales:</td>
-                    <td className="p-3.5 text-center font-mono text-sm text-red-700">{totalSummaryHoras} hrs</td>
-                    <td className="p-3.5 text-center font-mono">{totalSummaryOrdinarias}h</td>
-                    <td className="p-3.5 text-center font-mono text-blue-900">{totalSummaryExtrasDiurnas}h</td>
-                    <td className="p-3.5 text-center font-mono text-indigo-900">{totalSummaryExtrasNocturnas}h</td>
-                    <td className="p-3.5 text-center font-mono text-purple-900">{totalSummaryFestivas}h</td>
-                    <td className="p-3.5 text-center font-mono text-indigo-700">{totalSummaryRecargoNocturno}h</td>
-                    <td className="p-3.5 text-center font-mono text-purple-700">{totalSummaryRecargoFestivo}h</td>
-                    <td className="p-3.5 text-center font-mono text-amber-950 bg-amber-100/70">
-                      {totalSummarySalidasFuera} ($ {totalSummaryValorFuera.toLocaleString('es-CO')})
-                    </td>
-                    <td className="p-3.5 text-center font-mono">{totalSummaryPaquetes}</td>
-                    <td className="p-3.5 pr-6 text-right font-mono text-emerald-800">
-                      ${totalSummaryVentaNeta.toLocaleString('es-CO')} COP
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
+              <tfoot className="bg-slate-100 font-black text-xs text-slate-900 border-t-2 border-slate-300">
+                <tr>
+                  <td colSpan={4} className="p-4 pl-6 text-right uppercase tracking-wider text-slate-700">
+                    Totales Consolidados:
+                  </td>
+                  <td className="p-4 text-center text-indigo-900 text-sm font-mono font-black">
+                    {totalSummaryHoras} hrs
+                  </td>
+                  <td className="p-4 text-center font-mono text-[11px] text-slate-600">
+                    {totalSummaryOrdinarias}h Ord / {totalSummaryExtras}h Extras
+                  </td>
+                  <td className="p-4 text-center font-mono">{totalSummaryPaquetes}</td>
+                  <td className="p-4 pr-6 text-right font-mono text-emerald-800 text-sm">
+                    ${totalSummaryVentaNeta.toLocaleString('es-CO')} COP
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
       )}
 
-      {/* VIEW 2: DETALLE POR OPERACIÓN / REGISTRO */}
+      {/* ================= TABLE VIEW 2: REPORTE GENERAL OPERATIVO ================= */}
       {activeSubTab === 'por_registro' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Layers className="w-5 h-5 text-red-600" />
-              <h3 className="font-black text-sm text-slate-900 uppercase">
-                Registros de Operación Diaria ({filteredReports.length})
-              </h3>
-            </div>
-            <span className="text-xs font-bold text-slate-500">
-              Período: <strong>{getMonthYearString()}</strong>
-            </span>
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <h3 className="font-extrabold text-sm text-slate-800 flex items-center space-x-2">
+              <Building2 className="w-4 h-4 text-emerald-600" />
+              <span>Registros de Entrega y Operación por Cliente ({filteredReports.length})</span>
+            </h3>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100/80 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 text-slate-600 font-extrabold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="p-3.5 pl-6">Cliente</th>
                   <th className="p-3.5">Cédula & Repartidor</th>
                   <th className="p-3.5">Placa</th>
                   <th className="p-3.5">Fecha</th>
-                  <th className="p-3.5 text-center">Horas</th>
-                  <th className="p-3.5 text-center">Desglose Horas (42h)</th>
-                  <th className="p-3.5 text-center text-amber-900 bg-amber-50/50">Fuera Perímetro</th>
+                  <th className="p-3.5 text-center">Horas Trabajadas</th>
+                  <th className="p-3.5 text-center">Desglose (Reforma 2026)</th>
                   <th className="p-3.5 text-center">Paquetes</th>
                   <th className="p-3.5 text-right">Venta Neta</th>
                   <th className="p-3.5 pr-6 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-medium">
-                {filteredReports.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="p-8 text-center text-slate-400 italic">
-                      No hay registros operativos para los filtros seleccionados.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredReports.map((rep) => {
-                    const emp = employeeMap.get(rep.repartidorId);
-                    const isFestiveDate = isHolidayOrSundayInColombia(rep.fecha);
+                {filteredReports.map((rep) => {
+                  const emp = employeeMap.get(rep.repartidorId);
+                  const isFestiveDate = isHolidayOrSundayInColombia(rep.fecha);
 
-                    return (
-                      <tr key={rep.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3.5 pl-6">
-                          <div className="font-bold text-slate-900 text-sm">{rep.nombreCliente}</div>
-                          <div className="text-slate-400 text-[11px] font-mono">ID: {rep.clienteId}</div>
-                        </td>
+                  return (
+                    <tr key={rep.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-3.5 pl-6">
+                        <div className="font-bold text-slate-900 text-sm">{rep.nombreCliente}</div>
+                        <div className="text-slate-400 text-[11px] font-mono">ID: {rep.clienteId}</div>
+                      </td>
 
-                        <td className="p-3.5">
-                          <div className="font-bold text-slate-900">{rep.nombreRepartidor}</div>
-                          <div className="text-[11px] font-mono text-slate-500 font-bold">
-                            C.C. {emp?.cedula || '1.098.765.432'}
-                          </div>
-                        </td>
+                      <td className="p-3.5">
+                        <div className="font-bold text-slate-900">{rep.nombreRepartidor}</div>
+                        <div className="text-[11px] font-mono text-slate-500 font-bold">
+                          C.C. {emp?.cedula || '1.098.765.432'}
+                        </div>
+                      </td>
 
-                        <td className="p-3.5">
-                          <span className="font-mono font-bold bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
-                            {rep.placaVehiculo}
+                      <td className="p-3.5">
+                        <span className="font-mono font-bold bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[11px]">
+                          {rep.placaVehiculo}
+                        </span>
+                      </td>
+
+                      <td className="p-3.5">
+                        <div className="font-mono font-bold text-slate-800">{rep.fecha}</div>
+                        {isFestiveDate && (
+                          <span className="inline-block mt-0.5 px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded text-[9px]">
+                            Festivo Colombia
                           </span>
-                        </td>
+                        )}
+                      </td>
 
-                        <td className="p-3.5">
-                          <div className="font-mono font-bold text-slate-800">{rep.fecha}</div>
-                          {isFestiveDate && (
-                            <span className="inline-block mt-0.5 px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded text-[9px]">
-                              Festivo Colombia
+                      <td className="p-3.5 text-center font-black text-slate-900 text-sm font-mono">
+                        {rep.horasTrabajadas} hrs
+                      </td>
+
+                      <td className="p-3.5 text-center">
+                        <div className="inline-flex flex-wrap justify-center gap-1 text-[10px]">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-semibold border border-slate-200">
+                            Ord: {rep.horasOrdinarias}h
+                          </span>
+                          {rep.horasExtrasDiurnas > 0 && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-900 rounded font-bold">
+                              HED: {rep.horasExtrasDiurnas}h
                             </span>
                           )}
-                        </td>
-
-                        <td className="p-3.5 text-center font-black text-slate-900 text-sm font-mono">
-                          {rep.horasTrabajadas} hrs
-                        </td>
-
-                        <td className="p-3.5 text-center">
-                          <div className="inline-flex flex-wrap justify-center gap-1 text-[10px]">
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-semibold border border-slate-200">
-                              Ord: {rep.horasOrdinarias}h
+                          {rep.horasFestivas > 0 && (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-900 rounded font-bold">
+                              Fest: {rep.horasFestivas}h
                             </span>
-                            {rep.horasExtrasDiurnas > 0 && (
-                              <span className="px-2 py-0.5 bg-blue-100 text-blue-900 rounded font-bold">
-                                HED: {rep.horasExtrasDiurnas}h
-                              </span>
-                            )}
-                            {rep.horasExtrasNocturnas > 0 && (
-                              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 rounded font-bold">
-                                HEN: {rep.horasExtrasNocturnas}h
-                              </span>
-                            )}
-                            {rep.horasFestivas > 0 && (
-                              <span className="px-2 py-0.5 bg-purple-100 text-purple-900 rounded font-bold">
-                                Fest: {rep.horasFestivas}h
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* SALIDAS FUERA DE PERÍMETRO */}
-                        <td className="p-3.5 text-center bg-amber-50/40">
-                          {(rep.salidasFueraPerimetro || 0) > 0 ? (
-                            <div className="inline-flex flex-col items-center">
-                              <span className="font-bold text-amber-950 text-xs font-mono">
-                                {rep.salidasFueraPerimetro} salidas
-                              </span>
-                              <span className="text-[10px] text-amber-800 font-semibold">
-                                ${(rep.valorFueraPerimetro || 0).toLocaleString('es-CO')}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">-</span>
                           )}
-                        </td>
+                        </div>
+                      </td>
 
-                        <td className="p-3.5 text-center font-bold">
-                          {rep.paquetesEntregados}
-                        </td>
+                      <td className="p-3.5 text-center font-bold">
+                        {rep.paquetesEntregados}
+                      </td>
 
-                        <td className="p-3.5 text-right font-black text-slate-900 text-xs font-mono">
-                          ${rep.ventaNeta.toLocaleString('es-CO')} COP
-                        </td>
+                      <td className="p-3.5 text-right font-black text-slate-900 text-xs font-mono">
+                        ${rep.ventaNeta.toLocaleString('es-CO')} COP
+                      </td>
 
-                        <td className="p-3.5 pr-6 text-right">
-                          {onDeleteClientReport && (
-                            <button
-                              onClick={() => onDeleteClientReport(rep.id)}
-                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer"
-                              title="Eliminar registro"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                      <td className="p-3.5 pr-6 text-right">
+                        {onDeleteClientReport && (
+                          <button
+                            onClick={() => onDeleteClientReport(rep.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer"
+                            title="Eliminar registro"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* REQUERIMIENTO EXPLÍCITO: EL PDF DEBE MOSTRAR EL CONSOLIDADO DE LOS TURNOS POR EMPLEADO */}
+      {/* PRINT PREVIEW / PDF MODAL */}
       {showPrintModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:static print:bg-white">
-          <div className="bg-white rounded-2xl max-w-5xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] my-6 print:max-h-none print:shadow-none print:border-none print:my-0">
-            
-            {/* Modal Top Control Bar */}
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 print:hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Printer className="w-5 h-5 text-red-400" />
-                <h3 className="text-base font-bold">
-                  Vista Previa de Impresión & Exportación PDF - Consolidado de Turnos y Operación
-                </h3>
+                <Printer className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold">Vista Previa e Impresión PDF - Reporte de Clientes y Horas</h3>
               </div>
               <button
                 onClick={() => setShowPrintModal(false)}
@@ -1028,190 +958,112 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
               </button>
             </div>
 
-            {/* PRINTABLE DOCUMENT BODY */}
-            <div className="p-8 overflow-y-auto space-y-6 text-slate-900 print:p-0 print:overflow-visible">
-              
-              {/* Document Header */}
-              <div className="border-b-2 border-slate-900 pb-4 flex flex-col sm:flex-row justify-between items-start gap-4">
+            <div className="p-6 overflow-y-auto space-y-6 text-slate-900">
+              <div className="border-b border-slate-200 pb-4 flex justify-between items-start">
                 <div>
-                  <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-                    SERGEM MENSAJERIA Y LOGISTICA S.A.S.
-                  </h1>
-                  <p className="text-xs text-slate-600 font-bold">
-                    NIT: 900.398.712-4 • Calle 10 # 38-42, Santiago de Cali
-                  </p>
-                  <p className="text-xs font-black text-red-700 mt-1 uppercase tracking-wide">
+                  <h1 className="text-xl font-black text-slate-900 uppercase">SERGEM MENSAJERIA Y LOGISTICA S.A.S.</h1>
+                  <p className="text-xs text-slate-500 font-bold">NIT: 901.589.432-1 | Cali, Colombia</p>
+                  <p className="text-xs font-extrabold text-indigo-900 mt-1 uppercase">
                     {activeSubTab === 'por_empleado'
-                      ? `REPORTE CONSOLIDADO DE TURNOS Y PRODUCCIÓN POR EMPLEADO — ${getMonthYearString().toUpperCase()}`
-                      : `REPORTE OPERATIVO DETALLADO DE CLIENTES — ${getMonthYearString().toUpperCase()}`}
+                      ? `REPORTE POR EMPLEADO, ${getMonthYearString().toUpperCase()}`
+                      : `REPORTE GENERAL POR OPERACION, ${getMonthYearString().toUpperCase()}`}
                   </p>
                 </div>
-                <div className="text-left sm:text-right text-xs font-mono text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <p><strong>Fecha Generación:</strong> {new Date().toLocaleDateString('es-CO')}</p>
+                <div className="text-right text-xs font-mono text-slate-600">
+                  <p><strong>Fecha:</strong> {new Date().toLocaleDateString('es-CO')}</p>
                   <p><strong>Hora:</strong> {new Date().toLocaleTimeString('es-CO')}</p>
-                  <p><strong>Régimen:</strong> Ley 2101 (42h Semanales)</p>
                 </div>
               </div>
 
-              {/* SECTION 1: TABLA CONSOLIDADA POR EMPLEADO */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5 border-b border-slate-300 pb-1">
-                  <Users className="w-4 h-4 text-red-600" />
-                  <span>1. Resumen Consolidado de Horas, Recargos y Fuera de Perímetro</span>
-                </h3>
-
-                <table className="w-full text-left text-xs border border-slate-300 border-collapse">
-                  <thead className="bg-slate-100 text-slate-800 font-extrabold uppercase text-[9px]">
+              {/* Table rendering dependent on activeSubTab */}
+              {activeSubTab === 'por_empleado' ? (
+                <table className="w-full text-left text-xs border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-800 font-extrabold uppercase text-[10px]">
                     <tr>
                       <th className="p-2 border">Cédula</th>
                       <th className="p-2 border">Repartidor</th>
                       <th className="p-2 border">Placa</th>
                       <th className="p-2 border">Cliente</th>
-                      <th className="p-2 border text-center">Horas Ord. (42h)</th>
-                      <th className="p-2 border text-center">HED (+25%)</th>
-                      <th className="p-2 border text-center">HEN (+75%)</th>
-                      <th className="p-2 border text-center">Dom/Fest (+100%)</th>
-                      <th className="p-2 border text-center">Rec. Noct. (+35%)</th>
-                      <th className="p-2 border text-center">Rec. Fest. (+75%)</th>
-                      <th className="p-2 border text-center">Fuera Perímetro</th>
-                      <th className="p-2 border text-center">Paquetes</th>
+                      <th className="p-2 border text-center">Horas Trabajadas</th>
                       <th className="p-2 border text-right">Venta Neta</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 text-[11px]">
+                  <tbody className="divide-y divide-slate-200">
                     {filteredSummaries.map((sum, idx) => (
-                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                      <tr key={idx}>
                         <td className="p-2 border font-mono font-bold">{sum.documento}</td>
                         <td className="p-2 border font-bold">{sum.nombreRepartidor}</td>
                         <td className="p-2 border font-mono">{sum.placaVehiculo}</td>
                         <td className="p-2 border">{sum.nombreCliente}</td>
-                        <td className="p-2 border text-center font-mono">{sum.horasOrdinarias}h</td>
-                        <td className="p-2 border text-center font-mono">{sum.horasExtrasDiurnas}h</td>
-                        <td className="p-2 border text-center font-mono">{sum.horasExtrasNocturnas}h</td>
-                        <td className="p-2 border text-center font-mono">{sum.horasFestivas}h</td>
-                        <td className="p-2 border text-center font-mono">{sum.recargoNocturno}h</td>
-                        <td className="p-2 border text-center font-mono">{sum.recargoFestivo}h</td>
-                        <td className="p-2 border text-center font-mono font-bold text-amber-900">
-                          {sum.salidasFueraPerimetro > 0 ? `${sum.salidasFueraPerimetro} ($${sum.valorFueraPerimetro.toLocaleString('es-CO')})` : '-'}
-                        </td>
-                        <td className="p-2 border text-center font-mono font-bold">{sum.paquetesEntregados}</td>
-                        <td className="p-2 border text-right font-mono font-bold">${sum.ventaNeta.toLocaleString('es-CO')}</td>
+                        <td className="p-2 border text-center font-mono font-bold">{sum.horasTrabajadas} hrs</td>
+                        <td className="p-2 border text-right font-mono">${sum.ventaNeta.toLocaleString('es-CO')}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-slate-100 font-bold text-xs">
+                  <tfoot className="bg-slate-50 font-bold">
                     <tr>
-                      <td colSpan={4} className="p-2 border text-right uppercase">Totales:</td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryOrdinarias}h</td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryExtrasDiurnas}h</td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryExtrasNocturnas}h</td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryFestivas}h</td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryRecargoNocturno}h</td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryRecargoFestivo}h</td>
-                      <td className="p-2 border text-center font-mono text-amber-900">
-                        {totalSummarySalidasFuera} ($ {totalSummaryValorFuera.toLocaleString('es-CO')})
-                      </td>
-                      <td className="p-2 border text-center font-mono">{totalSummaryPaquetes}</td>
-                      <td className="p-2 border text-right font-mono text-emerald-800">
-                        ${totalSummaryVentaNeta.toLocaleString('es-CO')} COP
-                      </td>
+                      <td colSpan={4} className="p-2 border text-right">Totales:</td>
+                      <td className="p-2 border text-center font-mono">{totalSummaryHoras} hrs</td>
+                      <td className="p-2 border text-right font-mono">${totalSummaryVentaNeta.toLocaleString('es-CO')}</td>
                     </tr>
                   </tfoot>
                 </table>
-              </div>
-
-              {/* SECTION 2: CONSOLIDADO DE MALLAS DE TURNOS ASIGNADOS Y REPORTADOS POR EMPLEADO */}
-              {activeSubTab === 'por_empleado' && (
-                <div className="space-y-4 pt-4 border-t border-slate-300">
-                  <h3 className="text-xs font-black uppercase text-slate-900 tracking-wider flex items-center gap-1.5 border-b border-slate-300 pb-1">
-                    <Calendar className="w-4 h-4 text-indigo-600" />
-                    <span>2. Detalle y Malla de Turnos Semanales Asignados por Empleado</span>
-                  </h3>
-
-                  {employees
-                    .filter((emp) => emp.activo && emp.rol === 'Repartidor')
-                    .map((driver) => {
-                      const driverSched = schedules.find((s) => s.repartidorId === driver.id);
-
+              ) : (
+                <table className="w-full text-left text-xs border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-800 font-extrabold uppercase text-[10px]">
+                    <tr>
+                      <th className="p-2 border">Cliente</th>
+                      <th className="p-2 border">Cédula</th>
+                      <th className="p-2 border">Repartidor</th>
+                      <th className="p-2 border">Placa</th>
+                      <th className="p-2 border">Fecha</th>
+                      <th className="p-2 border text-center">Horas Trab.</th>
+                      <th className="p-2 border text-right">Venta Neta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {filteredReports.map((rep, idx) => {
+                      const emp = employeeMap.get(rep.repartidorId);
                       return (
-                        <div key={driver.id} className="border border-slate-200 rounded-xl p-3.5 bg-slate-50/60 space-y-2">
-                          <div className="flex flex-wrap items-center justify-between text-xs font-bold border-b border-slate-200 pb-1.5">
-                            <span className="text-slate-900">
-                              Repartidor: <strong className="text-red-700">{driver.nombre} {driver.apellido}</strong> (C.C. {driver.cedula})
-                            </span>
-                            <span className="text-slate-600 font-mono">
-                              Placa: <strong className="text-slate-900">{driver.placaVehiculo || 'VTX-89D'}</strong> | Cargo: {driver.cargo}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 text-[10px]">
-                            {daysOfWeek.map((day) => {
-                              const shift = driverSched?.dias[day as keyof WeeklySchedule['dias']];
-                              const isRest = !shift || shift.tipo === 'Descanso';
-
-                              return (
-                                <div
-                                  key={day}
-                                  className={`p-2 rounded-lg border ${
-                                    isRest
-                                      ? 'bg-slate-100 text-slate-400 border-slate-200'
-                                      : 'bg-white text-slate-800 border-slate-300 shadow-2xs'
-                                  }`}
-                                >
-                                  <div className="font-extrabold uppercase text-[9px] text-slate-700 mb-0.5">{day}</div>
-                                  {isRest ? (
-                                    <div className="italic text-[9px]">Descanso</div>
-                                  ) : (
-                                    <div className="space-y-0.5">
-                                      <div className="font-bold text-red-800 truncate">{shift.clienteNombre || 'Sede SERGEM'}</div>
-                                      <div className="font-mono font-bold text-[9px]">{shift.horaInicio1} - {shift.horaFin1}</div>
-                                      {shift.tipo === 'Partido' && shift.horaInicio2 && (
-                                        <div className="font-mono text-[9px] text-indigo-900">{shift.horaInicio2} - {shift.horaFin2}</div>
-                                      )}
-                                      <div className="text-[8px] text-slate-500 font-semibold">{shift.tipo}</div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        <tr key={idx}>
+                          <td className="p-2 border font-bold">{rep.nombreCliente}</td>
+                          <td className="p-2 border font-mono font-bold">{emp?.cedula || '1.098.765.432'}</td>
+                          <td className="p-2 border">{rep.nombreRepartidor}</td>
+                          <td className="p-2 border font-mono">{rep.placaVehiculo}</td>
+                          <td className="p-2 border font-mono">{rep.fecha}</td>
+                          <td className="p-2 border text-center font-mono font-bold">{rep.horasTrabajadas} hrs</td>
+                          <td className="p-2 border text-right font-mono">${rep.ventaNeta.toLocaleString('es-CO')}</td>
+                        </tr>
                       );
                     })}
-                </div>
+                  </tbody>
+                  <tfoot className="bg-slate-50 font-bold">
+                    <tr>
+                      <td colSpan={5} className="p-2 border text-right">Totales:</td>
+                      <td className="p-2 border text-center font-mono">{totalHoras} hrs</td>
+                      <td className="p-2 border text-right font-mono">${totalVentaNeta.toLocaleString('es-CO')}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               )}
 
-              {/* Signatures for PDF */}
-              <div className="pt-8 grid grid-cols-2 gap-12 text-xs text-slate-600 print:pt-12">
-                <div className="border-t border-slate-400 pt-2 text-center">
-                  <span className="font-bold text-slate-900 block">SERGEM MENSAJERIA Y LOGISTICA S.A.S.</span>
-                  <span>Coordinación de Operaciones & Logística</span>
-                </div>
-                <div className="border-t border-slate-400 pt-2 text-center">
-                  <span className="font-bold text-slate-900 block">Gestión Humana y Auditoría</span>
-                  <span>Control de Nómina y Facturación a Clientes</span>
-                </div>
-              </div>
-
-              {/* Modal Buttons */}
-              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200 print:hidden">
+              <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowPrintModal(false)}
-                  className="px-4 py-2 font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer text-xs"
+                  className="px-4 py-2 font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer text-xs"
                 >
                   Cerrar
                 </button>
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md cursor-pointer text-xs flex items-center space-x-2 active:scale-95"
+                  className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md cursor-pointer text-xs flex items-center space-x-2"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Imprimir / Guardar como PDF</span>
                 </button>
               </div>
-
             </div>
           </div>
         </div>

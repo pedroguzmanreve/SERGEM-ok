@@ -1,6 +1,6 @@
 {
   "name": "SERGEM S.A.S. - Reporte de Nómina",
   "description": "Sistema integral de gestión, liquidación y reporte de nómina para SERGEM S.A.S., conforme a la normativa laboral colombiana.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

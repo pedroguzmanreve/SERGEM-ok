@@ -1,0 +1,245 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Colaborador de SERGEM S.A.S., incluyendo repartidores y personal de zona o administrativo.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cedula": { "type": "string" },
+        "nombre": { "type": "string" },
+        "apellido": { "type": "string" },
+        "cargo": { "type": "string" },
+        "departamento": { "type": "string" },
+        "salarioBase": { "type": "number" },
+        "tipoContrato": { "type": "string" },
+        "nivelRiesgoARL": { "type": "number" },
+        "fechaIngreso": { "type": "string" },
+        "banco": { "type": "string" },
+        "tipoCuenta": { "type": "string" },
+        "numeroCuenta": { "type": "string" },
+        "eps": { "type": "string" },
+        "afp": { "type": "string" },
+        "ccf": { "type": "string" },
+        "activo": { "type": "boolean" },
+        "rol": { "type": "string" },
+        "placaVehiculo": { "type": "string" },
+        "jefeZonaId": { "type": "string" },
+        "email": { "type": "string" },
+        "telefono": { "type": "string" },
+        "ciudad": { "type": "string" },
+        "estadoInvitacion": { "type": "string" }
+      },
+      "required": [
+        "id",
+        "cedula",
+        "nombre",
+        "apellido",
+        "cargo",
+        "departamento",
+        "salarioBase",
+        "tipoContrato",
+        "nivelRiesgoARL",
+        "fechaIngreso",
+        "banco",
+        "tipoCuenta",
+        "numeroCuenta",
+        "eps",
+        "afp",
+        "ccf",
+        "activo",
+        "rol"
+      ]
+    },
+    "WeeklySchedule": {
+      "title": "WeeklySchedule",
+      "description": "Horario semanal programado por el Jefe de Zona para un repartidor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "repartidorId": { "type": "string" },
+        "jefeZonaId": { "type": "string" },
+        "semanaInicio": { "type": "string" },
+        "dias": { "type": "object" }
+      },
+      "required": ["id", "repartidorId", "jefeZonaId", "semanaInicio", "dias"]
+    },
+    "ZoneChiefNovedad": {
+      "title": "ZoneChiefNovedad",
+      "description": "Novedad operacional (permiso remunerado, no remunerado, incapacidad) registrada por el Jefe de Zona.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "repartidorId": { "type": "string" },
+        "jefeZonaId": { "type": "string" },
+        "fecha": { "type": "string" },
+        "tipo": { "type": "string" },
+        "horaInicio": { "type": "string" },
+        "horaFin": { "type": "string" },
+        "duracionHoras": { "type": "number" },
+        "observaciones": { "type": "string" },
+        "fechaRegistro": { "type": "string" }
+      },
+      "required": [
+        "id",
+        "repartidorId",
+        "jefeZonaId",
+        "fecha",
+        "tipo",
+        "horaInicio",
+        "horaFin",
+        "duracionHoras",
+        "observaciones",
+        "fechaRegistro"
+      ]
+    },
+    "ClientOrderReport": {
+      "title": "ClientOrderReport",
+      "description": "Reporte diario de operación y entrega de paquetes por cliente y repartidor conforme a la jornada laboral.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clienteId": { "type": "string" },
+        "nombreCliente": { "type": "string" },
+        "repartidorId": { "type": "string" },
+        "nombreRepartidor": { "type": "string" },
+        "placaVehiculo": { "type": "string" },
+        "fecha": { "type": "string" },
+        "paquetesEntregados": { "type": "number" },
+        "ventaNeta": { "type": "number" },
+        "horasTrabajadas": { "type": "number" },
+        "horasOrdinarias": { "type": "number" },
+        "horasExtrasDiurnas": { "type": "number" },
+        "horasExtrasNocturnas": { "type": "number" }
+      },
+      "required": [
+        "id",
+        "clienteId",
+        "nombreCliente",
+        "repartidorId",
+        "nombreRepartidor",
+        "placaVehiculo",
+        "fecha",
+        "paquetesEntregados",
+        "ventaNeta",
+        "horasTrabajadas",
+        "horasOrdinarias",
+        "horasExtrasDiurnas",
+        "horasExtrasNocturnas"
+      ]
+    },
+    "PayrollPeriod": {
+      "title": "PayrollPeriod",
+      "description": "Período de liquidación de nómina de SERGEM S.A.S.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nombrePeriodo": { "type": "string" },
+        "fechaInicio": { "type": "string" },
+        "fechaFin": { "type": "string" },
+        "tipoPeriodo": { "type": "string" },
+        "diasBasePeriodo": { "type": "number" },
+        "estado": { "type": "string" },
+        "fechaLiquidacion": { "type": "string" }
+      },
+      "required": [
+        "id",
+        "nombrePeriodo",
+        "fechaInicio",
+        "fechaFin",
+        "tipoPeriodo",
+        "diasBasePeriodo",
+        "estado",
+        "fechaLiquidacion"
+      ]
+    },
+    "CompanySettings": {
+      "title": "CompanySettings",
+      "description": "Parámetros legales, porcentajes y configuración general de SERGEM S.A.S.",
+      "type": "object",
+      "properties": {
+        "nombreEmpresa": { "type": "string" },
+        "nit": { "type": "string" },
+        "direccion": { "type": "string" },
+        "telefono": { "type": "string" },
+        "ciudad": { "type": "string" },
+        "email": { "type": "string" },
+        "smmlv": { "type": "number" },
+        "auxilioTransporteMensual": { "type": "number" },
+        "porcentajeSaludEmpleado": { "type": "number" },
+        "porcentajePensionEmpleado": { "type": "number" },
+        "porcentajeSaludEmpresa": { "type": "number" },
+        "porcentajePensionEmpresa": { "type": "number" },
+        "aplicaExencionArt114": { "type": "boolean" },
+        "porcentajeCajaCompensacion": { "type": "number" },
+        "porcentajeSena": { "type": "number" },
+        "porcentajeICBF": { "type": "number" },
+        "tarifasARL": { "type": "object" }
+      },
+      "required": [
+        "nombreEmpresa",
+        "nit",
+        "direccion",
+        "telefono",
+        "ciudad",
+        "email",
+        "smmlv",
+        "auxilioTransporteMensual",
+        "porcentajeSaludEmpleado",
+        "porcentajePensionEmpleado",
+        "porcentajeSaludEmpresa",
+        "porcentajePensionEmpresa",
+        "aplicaExencionArt114",
+        "porcentajeCajaCompensacion",
+        "porcentajeSena",
+        "porcentajeICBF",
+        "tarifasARL"
+      ]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil de usuario autenticado con su rol asignado en el sistema de nómina SERGEM S.A.S.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["Administrador", "JefeZona", "Repartidor"] },
+        "employeeId": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Perfiles y roles de los usuarios autenticados del sistema."
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Directorio de colaboradores y personal de SERGEM S.A.S."
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "WeeklySchedule",
+      "description": "Turnos y horarios semanales asignados a repartidores."
+    },
+    "/zoneNovedades/{novedadId}": {
+      "schema": "ZoneChiefNovedad",
+      "description": "Novedades y permisos registrados por Jefes de Zona."
+    },
+    "/clientReports/{reportId}": {
+      "schema": "ClientOrderReport",
+      "description": "Reportes diarios de paquetes y pedidos por cliente."
+    },
+    "/periods/{periodId}": {
+      "schema": "PayrollPeriod",
+      "description": "Períodos de nómina y su estado de liquidación."
+    },
+    "/settings/company": {
+      "schema": "CompanySettings",
+      "description": "Configuración de la empresa y parámetros normativos."
+    }
+  }
+}

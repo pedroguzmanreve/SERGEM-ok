@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Employee, WeeklySchedule, ClientOrderReport, AuthUser, DriverDailyAttendance } from '../types/payroll';
+import React, { useState, useMemo } from 'react';
+import { Employee, WeeklySchedule, ClientOrderReport } from '../types/payroll';
 import {
   Truck,
   Calendar,
@@ -19,34 +19,23 @@ import {
   Sun,
   Sunset,
   ArrowRight,
-  FileCheck,
-  Compass,
-  MapPin,
-  Plus,
-  Trash2,
-  UploadCloud,
-  Loader2
+  FileCheck
 } from 'lucide-react';
-import { storageService } from '../services/storage';
 
 interface DriverPortalViewProps {
   employees: Employee[];
   schedules: WeeklySchedule[];
   clientReports: ClientOrderReport[];
-  currentUser?: AuthUser | null;
-  attendanceMap?: Record<string, DriverDailyAttendance>;
   onAddClientReport?: (report: ClientOrderReport) => void;
-  onUpdateAttendance?: (employeeId: string, updates: Partial<DriverDailyAttendance>) => void;
+  defaultDriverId?: string;
 }
 
 export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   employees,
   schedules,
   clientReports,
-  currentUser,
-  attendanceMap = {},
   onAddClientReport,
-  onUpdateAttendance,
+  defaultDriverId,
 }) => {
   // Filter employees with Repartidor or Conductor role
   const drivers = useMemo(() => {
@@ -59,50 +48,18 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
     );
   }, [employees]);
 
-  // Active Driver state (default to logged in driver or first driver)
-  const [selectedDriverId, setSelectedDriverId] = useState<string>(() => {
-    if (currentUser && currentUser.rol === 'Repartidor') {
-      return currentUser.id;
-    }
-    return drivers[0]?.id || '';
-  });
-
-  useEffect(() => {
-    if (currentUser && currentUser.rol === 'Repartidor') {
-      setSelectedDriverId(currentUser.id);
-    }
-  }, [currentUser]);
+  // Active Driver state (default to defaultDriverId or first driver or EMP-002)
+  const [selectedDriverId, setSelectedDriverId] = useState<string>(
+    defaultDriverId || drivers[0]?.id || 'EMP-002'
+  );
 
   const selectedDriver = useMemo(() => {
     return (
       employees.find((emp) => emp.id === selectedDriverId) ||
-      (currentUser && currentUser.id === selectedDriverId
-        ? ({
-            id: currentUser.id,
-            cedula: currentUser.cedula,
-            nombre: currentUser.nombre,
-            apellido: currentUser.apellido,
-            cargo: currentUser.cargo,
-            departamento: currentUser.departamento || 'Operaciones y Mensajería',
-            salarioBase: 1423500,
-            tipoContrato: 'Término Indefinido',
-            nivelRiesgoARL: 4,
-            fechaIngreso: '2026-01-01',
-            banco: 'Bancolombia',
-            tipoCuenta: 'Ahorros',
-            numeroCuenta: '394-112390-12',
-            eps: 'SURA EPS',
-            afp: 'Protección',
-            ccf: 'Comfandi',
-            activo: true,
-            rol: currentUser.rol,
-            placaVehiculo: currentUser.placaVehiculo || 'VTX-89D',
-          } as Employee)
-        : undefined) ||
       drivers[0] ||
-      undefined
+      employees[0]
     );
-  }, [employees, selectedDriverId, drivers, currentUser]);
+  }, [employees, selectedDriverId, drivers]);
 
   // Selected week for schedule view
   const [selectedWeek, setSelectedWeek] = useState<string>('2026-08-03');
@@ -119,7 +76,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   const [auditPhoto, setAuditPhoto] = useState<string | null>(null);
   const [auditPhotoLocked, setAuditPhotoLocked] = useState<boolean>(false);
 
-  // Shift status
+  // Shift status: 'PENDIENTE_INICIO' | 'INICIADO_CONTINUA' | 'INICIADO_MANANA' | 'FINALIZADO_MANANA' | 'INICIADO_TARDE' | 'JORNADA_COMPLETADA'
   const [shiftStatus, setShiftStatus] = useState<
     | 'PENDIENTE_INICIO'
     | 'INICIADO_CONTINUA'
@@ -139,20 +96,6 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   const [paquetesCount, setPaquetesCount] = useState<number | ''>(35);
   const [ventaNeta, setVentaNeta] = useState<number | ''>(1250000);
 
-  // REQUERIMIENTO: SALIDAS FUERA DEL PERÍMETRO EN EL PORTAL DE REPARTIDOR
-  const [salidasFueraCount, setSalidasFueraCount] = useState<number>(0);
-  const [tarifaSalidaPerimetro, setTarifaSalidaPerimetro] = useState<number>(22000);
-  const [destinoPerimetro, setDestinoPerimetro] = useState<string>('Yumbo (Zona Industrial)');
-  const [observacionPerimetro, setObservacionPerimetro] = useState<string>('');
-
-  // Desglose de horas del turno (Base 42h)
-  const [horasOrd, setHorasOrd] = useState<number>(8);
-  const [horasExtDiurnas, setHorasExtDiurnas] = useState<number>(0);
-  const [horasExtNocturnas, setHorasExtNocturnas] = useState<number>(0);
-  const [horasDomFestivas, setHorasDomFestivas] = useState<number>(0);
-  const [recargoNocturnoHoras, setRecargoNocturnoHoras] = useState<number>(0);
-  const [recargoFestivoHoras, setRecargoFestivoHoras] = useState<number>(0);
-
   // Success message state
   const [successMessage, setSuccessMessage] = useState<string>('');
 
@@ -169,7 +112,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   const isTurnoPartido = todayShift.tipo === 'Partido';
   const clienteHoy = todayShift.clienteNombre || 'Almacenes Éxito S.A.';
 
-  // Photo Capture
+  // Handle Photo Capture Simulation / Upload
   const handleCapturePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (auditPhotoLocked) return;
 
@@ -179,6 +122,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       reader.onload = (event) => {
         if (event.target?.result) {
           setAuditPhoto(event.target.result as string);
+          setAuditPhotoLocked(true); // Lock photo permanently as requested
         }
       };
       reader.readAsDataURL(file);
@@ -187,60 +131,14 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
 
   const handleSimulatePhoto = () => {
     if (auditPhotoLocked) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(0, 0, 320, 240);
-
-      ctx.fillStyle = '#dc2626';
-      ctx.fillRect(40, 40, 240, 160);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 13px sans-serif';
-      ctx.fillText('AUDITORIA SERGEM', 70, 90);
-      ctx.fillText(`C.C. ${selectedDriver?.cedula || '12345'}`, 70, 120);
-      ctx.fillText(`PLACA: ${selectedDriver?.placaVehiculo || 'VTX-89D'}`, 70, 150);
-      ctx.fillText(new Date().toLocaleTimeString('es-CO'), 70, 180);
-
-      setAuditPhoto(canvas.toDataURL());
-    }
+    // Default audit photo placeholder (delivery driver badge/vehicle inspection)
+    const samplePhoto =
+      'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&q=80&w=600';
+    setAuditPhoto(samplePhoto);
+    setAuditPhotoLocked(true); // Lock photo permanently as requested
   };
 
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-
-  const handleLockPhotoAndValidate = async () => {
-    if (!auditPhoto) return;
-    setAuditPhotoLocked(true);
-
-    let finalPhotoUrl = auditPhoto;
-
-    // Asynchronously persist to Supabase Storage bucket 'driver-audits'
-    if (selectedDriver) {
-      setIsUploadingPhoto(true);
-      try {
-        const path = `repartidores/${selectedDriver.cedula}/auditoria_${new Date().toISOString().split('T')[0]}_${Date.now()}.jpg`;
-        const uploadRes = await storageService.uploadBase64('driver-audits', path, auditPhoto, 'image/jpeg');
-        if (uploadRes.url) {
-          finalPhotoUrl = uploadRes.url;
-        }
-      } catch (err) {
-        console.warn('[DriverPortalView] Error subiendo foto a Supabase Storage:', err);
-      } finally {
-        setIsUploadingPhoto(false);
-      }
-
-      if (onUpdateAttendance) {
-        onUpdateAttendance(selectedDriver.id, {
-          fotoAuditoria: finalPhotoUrl,
-          estado: 'PENDIENTE_INICIO',
-        });
-      }
-    }
-  };
-
+  // Current time formatted
   const getCurrentTime = () => {
     const now = new Date();
     return now.toLocaleTimeString('es-CO', {
@@ -261,13 +159,6 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       setShiftStatus('INICIADO_MANANA');
     } else {
       setShiftStatus('INICIADO_CONTINUA');
-    }
-
-    if (selectedDriver && onUpdateAttendance) {
-      onUpdateAttendance(selectedDriver.id, {
-        estado: 'INICIADO',
-        horaConexionReal: nowTime,
-      });
     }
   };
 
@@ -291,14 +182,6 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       setHoraFinManana(nowTime);
     }
     setShiftStatus('JORNADA_COMPLETADA');
-
-    if (selectedDriver && onUpdateAttendance) {
-      onUpdateAttendance(selectedDriver.id, {
-        estado: 'FINALIZADO',
-        salidasFueraPerimetro: salidasFueraCount,
-        valorFueraPerimetro: salidasFueraCount * tarifaSalidaPerimetro,
-      });
-    }
   };
 
   // Driver reports filter
@@ -318,46 +201,20 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
     if (!selectedDriver) return;
 
     const chosenClient = selectedClientForReport || clienteHoy || 'Almacenes Éxito S.A.';
-    const valorFueraTotal = salidasFueraCount * tarifaSalidaPerimetro;
-    const totalHorasCalculadas = Number(horasOrd) + Number(horasExtDiurnas) + Number(horasExtNocturnas) + Number(horasDomFestivas);
 
     const newReport: ClientOrderReport = {
       id: `REP-${Date.now()}`,
-      clienteId: chosenClient.includes('Éxito')
-        ? 'CLI-001'
-        : chosenClient.includes('Homecenter')
-        ? 'CLI-002'
-        : chosenClient.includes('Alkosto')
-        ? 'CLI-003'
-        : chosenClient.includes('Cruz Verde')
-        ? 'CLI-004'
-        : 'CLI-GEN',
+      clienteId: chosenClient.includes('Éxito') ? 'CLI-001' : chosenClient.includes('Homecenter') ? 'CLI-002' : 'CLI-003',
       nombreCliente: chosenClient,
       repartidorId: selectedDriver.id,
       nombreRepartidor: `${selectedDriver.nombre} ${selectedDriver.apellido}`,
       placaVehiculo: selectedDriver.placaVehiculo || 'VTX-89D',
       fecha: new Date().toISOString().split('T')[0],
-      horasTrabajadas: totalHorasCalculadas > 0 ? totalHorasCalculadas : 8,
-      horasOrdinarias: Number(horasOrd) || 8,
-      horasExtrasDiurnas: Number(horasExtDiurnas) || 0,
-      horasExtrasNocturnas: Number(horasExtNocturnas) || 0,
-      horasFestivas: Number(horasDomFestivas) || 0,
-      recargoNocturno: Number(recargoNocturnoHoras) || 0,
-      recargoFestivo: Number(recargoFestivoHoras) || 0,
-      // Salidas fuera de perímetro
-      salidasFueraPerimetro: salidasFueraCount,
-      valorFueraPerimetro: valorFueraTotal,
-      detallesFueraPerimetro:
-        salidasFueraCount > 0
-          ? [
-              {
-                destino: destinoPerimetro,
-                cantidad: salidasFueraCount,
-                tarifaUnitaria: tarifaSalidaPerimetro,
-                observacion: observacionPerimetro || undefined,
-              },
-            ]
-          : undefined,
+      horasTrabajadas: 8,
+      horasOrdinarias: 8,
+      horasExtrasDiurnas: 0,
+      horasExtrasNocturnas: 0,
+      horasFestivas: 0,
       paquetesEntregados: Number(paquetesCount) || 0,
       ventaNeta: Number(ventaNeta) || 0,
     };
@@ -368,11 +225,9 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
 
     setIsSavedRecently(true);
     setSuccessMessage(
-      `¡Reporte diario guardado exitosamente para ${selectedDriver.nombre}! Se registraron ${paquetesCount} paquetes, $${Number(
+      `¡Reporte diario guardado exitosamente para ${selectedDriver.nombre}! Se registraron ${paquetesCount} paquetes y $${Number(
         ventaNeta
-      ).toLocaleString('es-CO')} en venta, ${salidasFueraCount} salidas fuera de perímetro ($${valorFueraTotal.toLocaleString(
-        'es-CO'
-      )}) y ${totalHorasCalculadas || 8} horas de jornada (${chosenClient}).`
+      ).toLocaleString('es-CO')} en venta neta (${chosenClient}).`
     );
 
     setTimeout(() => {
@@ -381,14 +236,14 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
 
     setTimeout(() => {
       setSuccessMessage('');
-    }, 9000);
+    }, 8000);
   };
 
   const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   return (
     <div id="driver-portal-view" className="space-y-6">
-      {/* Header Banner */}
+      {/* Header Banner - Light Slate Grey Premium Design */}
       <div className="relative overflow-hidden bg-gradient-to-b from-slate-100/90 to-slate-200/60 text-slate-900 rounded-2xl p-7 md:p-8 shadow-xs border border-slate-300/80 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2 max-w-3xl">
           <div className="inline-flex items-center space-x-2 bg-white border border-slate-300/80 text-red-700 font-extrabold text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-xl shadow-2xs">
@@ -399,7 +254,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
             Portal del Repartidor - Control de Turnos & Auditoría
           </h2>
           <p className="text-slate-600 text-xs md:text-sm font-medium leading-relaxed">
-            Consulte su programación semanal, capture la foto obligatoria de auditoría antes de iniciar turno, controle el cierre de jornada, registre sus entregas diarias y reporte sus salidas fuera del perímetro urbano.
+            Consulte su programación semanal, capture la foto obligatoria de auditoría antes de iniciar turno, controle el cierre de jornada y registre sus entregas diarias.
           </p>
         </div>
 
@@ -413,25 +268,22 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
             value={selectedDriverId}
             onChange={(e) => {
               setSelectedDriverId(e.target.value);
+              // Reset shift control state when changing driver
               setAuditPhoto(null);
               setAuditPhotoLocked(false);
               setShiftStatus('PENDIENTE_INICIO');
             }}
             className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 cursor-pointer"
           >
-            {drivers.length === 0 ? (
-              <option value="">Sin Repartidores registrados</option>
-            ) : (
-              drivers.map((drv) => (
-                <option key={drv.id} value={drv.id}>
-                  {drv.nombre} {drv.apellido} - C.C. {drv.cedula} ({drv.placaVehiculo || 'Sin Placa'})
-                </option>
-              ))
-            )}
+            {drivers.map((drv) => (
+              <option key={drv.id} value={drv.id}>
+                {drv.nombre} {drv.apellido} - C.C. {drv.cedula} ({drv.placaVehiculo || 'VTX-89D'})
+              </option>
+            ))}
           </select>
           <div className="mt-2.5 text-[11px] text-slate-500 flex items-center justify-between font-semibold border-t border-slate-100 pt-2">
-            <span>Cargo: <strong className="text-slate-800">{selectedDriver?.cargo || 'N/A'}</strong></span>
-            <span>Placa: <strong className="text-red-700 font-mono font-black">{selectedDriver?.placaVehiculo || 'Sin Placa'}</strong></span>
+            <span>Cargo: <strong className="text-slate-800">{selectedDriver?.cargo}</strong></span>
+            <span>Placa: <strong className="text-red-700 font-mono font-black">{selectedDriver?.placaVehiculo || 'VTX-89D'}</strong></span>
           </div>
         </div>
       </div>
@@ -456,77 +308,115 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
-            <Calendar className="w-5 h-5 text-red-600" />
-            <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide">
-              1. Programación de la Semana
-            </h3>
+            <Calendar className="w-5 h-5 text-indigo-600" />
+            <div>
+              <h3 className="font-black text-sm text-slate-900">
+                1. Programación Semanal de Turnos para {selectedDriver?.nombre} {selectedDriver?.apellido}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Consulta los clientes asignados y el horario programado por tu Jefe de Zona para esta semana.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center space-x-2 text-xs">
-            <span className="text-slate-500 font-bold">Semana:</span>
+
+          <div className="flex items-center space-x-2 text-xs font-bold">
+            <span className="text-slate-500">Semana:</span>
             <select
               value={selectedWeek}
               onChange={(e) => setSelectedWeek(e.target.value)}
-              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 cursor-pointer focus:ring-2 focus:ring-red-500"
+              className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 font-mono text-xs text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
-              <option value="2026-08-03">03 Ago - 09 Ago 2026</option>
-              <option value="2026-08-10">10 Ago - 16 Ago 2026</option>
+              <option value="2026-08-03">03 de Agosto - 09 de Agosto 2026</option>
+              <option value="2026-08-10">10 de Agosto - 16 de Agosto 2026</option>
             </select>
           </div>
         </div>
 
+        {/* Weekly Schedule Grid */}
         <div className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
-            {daysOfWeek.map((day) => {
-              const shift = driverSchedule?.dias[day as keyof WeeklySchedule['dias']];
-              const isRest = !shift || shift.tipo === 'Descanso';
-              const isToday = day === 'Lunes';
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            {daysOfWeek.map((dayName, idx) => {
+              const dayData = driverSchedule?.dias[dayName] || {
+                tipo: idx === 6 ? ('Descanso' as const) : idx % 2 === 0 ? ('Partido' as const) : ('Continua' as const),
+                clienteNombre: idx === 6 ? 'N/A' : idx % 2 === 0 ? 'Almacenes Éxito S.A.' : 'Homecenter Colombia',
+                horaInicio1: '07:00',
+                horaFin1: '11:00',
+                horaInicio2: '14:00',
+                horaFin2: '18:00',
+              };
+
+              const isToday = dayName === 'Lunes';
+              const isDescanso = dayData.tipo === 'Descanso';
 
               return (
                 <div
-                  key={day}
-                  className={`p-3.5 rounded-xl border transition-all ${
+                  key={dayName}
+                  className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between ${
                     isToday
-                      ? 'bg-red-50/70 border-red-300 shadow-xs ring-2 ring-red-400/20'
-                      : isRest
-                      ? 'bg-slate-50 border-slate-200 text-slate-400'
+                      ? 'bg-red-50/80 border-red-400 ring-2 ring-red-500/20 shadow-xs'
+                      : isDescanso
+                      ? 'bg-slate-50 border-slate-200 opacity-75'
                       : 'bg-white border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-xs font-black uppercase ${isToday ? 'text-red-700' : 'text-slate-700'}`}>
-                      {day}
-                    </span>
-                    {isToday && (
-                      <span className="text-[9px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded-md">
-                        HOY
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-xs font-black uppercase ${isToday ? 'text-red-900' : 'text-slate-700'}`}>
+                        {dayName}
                       </span>
+                      {isToday && (
+                        <span className="px-1.5 py-0.5 bg-red-600 text-white font-extrabold text-[9px] rounded-md uppercase tracking-wider shadow-2xs shadow-red-600/20">
+                          HOY
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mb-2">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-extrabold ${
+                          dayData.tipo === 'Descanso'
+                            ? 'bg-slate-200 text-slate-700'
+                            : dayData.tipo === 'Partido'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : dayData.tipo === 'Medio Tiempo Mañana' || dayData.tipo === 'Medio Tiempo Tarde'
+                            ? 'bg-sky-100 text-sky-900 border border-sky-200'
+                            : 'bg-red-100 text-red-900 border border-red-200'
+                        }`}
+                      >
+                        {dayData.tipo === 'Partido'
+                          ? 'Turno Partido'
+                          : dayData.tipo === 'Medio Tiempo Mañana'
+                          ? 'Medio Tiempo (Mañana)'
+                          : dayData.tipo === 'Medio Tiempo Tarde'
+                          ? 'Medio Tiempo (Tarde)'
+                          : dayData.tipo === 'Continua'
+                          ? 'Jornada Continua'
+                          : 'Descanso'}
+                      </span>
+                    </div>
+
+                    {!isDescanso ? (
+                      <div className="space-y-1.5 text-xs">
+                        <div className="font-extrabold text-slate-900 text-xs flex items-center space-x-1">
+                          <Building2 className="w-3 h-3 text-indigo-600 shrink-0" />
+                          <span className="truncate">{dayData.clienteNombre || 'Éxito S.A.'}</span>
+                        </div>
+
+                        <div className="font-mono text-[11px] text-slate-600 bg-slate-100/80 p-1.5 rounded-lg border border-slate-200/60 font-semibold space-y-0.5">
+                          {dayData.tipo === 'Partido' ? (
+                            <>
+                              <div>M: {dayData.horaInicio1 || '07:00'} - {dayData.horaFin1 || '11:00'}</div>
+                              <div>T: {dayData.horaInicio2 || '14:00'} - {dayData.horaFin2 || '18:00'}</div>
+                            </>
+                          ) : (
+                            <div>Turno: {dayData.horaInicio1 || '07:00'} - {dayData.horaFin1 || '15:00'}</div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 font-semibold italic py-2">Día Libre de Descanso</p>
                     )}
                   </div>
-
-                  {isRest ? (
-                    <div className="py-3 text-center">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Descanso
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="space-y-1 text-xs">
-                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded block truncate">
-                        {shift.clienteNombre || 'Cliente General'}
-                      </span>
-                      <div className="font-mono text-[11px] font-black text-slate-800">
-                        {shift.horaInicio1} - {shift.horaFin1}
-                      </div>
-                      {shift.tipo === 'Partido' && shift.horaInicio2 && (
-                        <div className="font-mono text-[11px] font-black text-indigo-900 border-t border-slate-100 pt-0.5">
-                          {shift.horaInicio2} - {shift.horaFin2}
-                        </div>
-                      )}
-                      <span className="text-[10px] text-slate-500 font-semibold block pt-1">
-                        {shift.tipo}
-                      </span>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -534,98 +424,86 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
         </div>
       </div>
 
-      {/* 2 & 3. CONTROL DE JORNADA & AUDITORIA */}
+      {/* SHIFT OPERATIONAL CONTROL PANEL (REQUERIMIENTOS 2, 3, 4, 5) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* LEFT COLUMN: FOTO AUDITORIA & CONTROL DE TURNOS */}
+        {/* LEFT COLUMN: REQUERIMIENTO 2 - FOTO AUDITORÍA & REQUERIMIENTO 3 - CONTROL DE TURNO */}
         <div className="lg:col-span-7 space-y-6">
           
-          {/* REQUERIMIENTO 2: FOTO OBLIGATORIA DE AUDITORÍA */}
+          {/* REQUERIMIENTO 2: FOTO AUDITORÍA (UNICA Y NO ELIMINABLE) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center space-x-2">
-                <div className="p-2 bg-red-100 text-red-700 rounded-xl">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
                   <Camera className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">
-                    2. Foto Obligatoria de Auditoría (Antes de Iniciar Turno)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Evidencia fotográfica obligatoria antes de habilitar el inicio de jornada.
-                  </p>
+                  <h3 className="font-black text-sm text-slate-900">2. Foto Auditoría de Inicio de Jornada</h3>
+                  <p className="text-xs text-slate-500">Requisito obligatorio para habilitar la iniciación del turno.</p>
                 </div>
               </div>
+
               {auditPhotoLocked && (
-                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-xs font-black rounded-lg flex items-center space-x-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Auditado</span>
+                <span className="inline-flex items-center space-x-1.5 bg-rose-100 text-rose-900 border border-rose-300 px-3 py-1 rounded-xl text-xs font-black shadow-2xs">
+                  <Lock className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Foto Bloqueada</span>
                 </span>
               )}
             </div>
 
-            {/* Photo Capture Preview Box */}
-            <div className="border-2 border-dashed border-slate-300 rounded-2xl p-4 bg-slate-50 flex flex-col items-center justify-center min-h-[220px]">
+            {/* Photo Capture or Display Box */}
+            <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
               {auditPhoto ? (
-                <div className="relative w-full flex flex-col items-center space-y-3">
-                  <img
-                    src={auditPhoto}
-                    alt="Auditoría Repartidor"
-                    className="max-h-52 rounded-xl object-cover border-2 border-slate-400 shadow-md"
-                  />
-                  <div className="text-center text-xs font-bold text-slate-700">
-                    Foto capturada: <strong>{selectedDriver?.nombre}</strong> ({selectedDriver?.placaVehiculo || 'VTX-89D'})
+                <div className="space-y-3 w-full max-w-sm">
+                  <div className="relative rounded-xl overflow-hidden border-2 border-slate-800 shadow-md">
+                    <img
+                      src={auditPhoto}
+                      alt="Foto de Auditoría de Turno"
+                      className="w-full h-48 object-cover"
+                    />
+                    <div className="absolute top-2 right-2 bg-rose-600 text-white font-extrabold text-[10px] px-2 py-1 rounded-md shadow-xs flex items-center space-x-1">
+                      <Lock className="w-3 h-3" />
+                      <span>NO MODIFICABLE</span>
+                    </div>
                   </div>
-                  {!auditPhotoLocked && (
-                    <button
-                      type="button"
-                      onClick={handleLockPhotoAndValidate}
-                      disabled={isUploadingPhoto}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black rounded-xl text-xs flex items-center space-x-2 shadow-md cursor-pointer transition-all active:scale-95"
-                    >
-                      {isUploadingPhoto ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Guardando en Storage...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="w-4 h-4" />
-                          <span>Validar y Bloquear Foto (Habilitar Turno)</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-bold text-rose-900 flex items-center space-x-2">
+                    <Lock className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Foto registrada exitosamente. Conforme a las normas operativas, esta foto no se puede eliminar ni volver a tomar.</span>
+                  </div>
                 </div>
               ) : (
-                <div className="text-center space-y-3 p-4">
-                  <div className="w-14 h-14 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto border border-red-200">
+                <div className="py-6 space-y-3 max-w-md">
+                  <div className="w-14 h-14 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-2xs">
                     <Camera className="w-7 h-7" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-700">Tome una fotografía clara de su dotación y carnet</p>
-                    <p className="text-[11px] text-slate-400">Requerido por seguridad y auditoría de SERGEM</p>
+                    <p className="font-extrabold text-xs text-slate-800">Tomar o Cargar Foto de Inspección / Uniforme</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Debes registrar la foto antes de iniciar el turno. <strong>Atención:</strong> Una vez guardada, no podrá ser cambiada ni eliminada.
+                    </p>
                   </div>
 
-                  <div className="flex items-center justify-center gap-3 pt-2">
-                    <label className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer shadow-xs flex items-center space-x-1.5 transition-all">
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                    <label className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs cursor-pointer shadow-sm transition-all flex items-center space-x-2">
                       <Camera className="w-4 h-4" />
-                      <span>Abrir Cámara / Subir</span>
+                      <span>Capturar / Seleccionar Foto</span>
                       <input
                         type="file"
                         accept="image/*"
-                        capture="user"
+                        capture="environment"
                         onChange={handleCapturePhoto}
                         className="hidden"
                       />
                     </label>
+
                     <button
                       type="button"
                       onClick={handleSimulatePhoto}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl cursor-pointer shadow-xs flex items-center space-x-1.5 transition-all"
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm transition-all flex items-center space-x-1.5"
                     >
-                      <Sparkles className="w-4 h-4" />
-                      <span>Simular Captura</span>
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Simular Foto Auditoría</span>
                     </button>
                   </div>
                 </div>
@@ -633,64 +511,65 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
             </div>
           </div>
 
-          {/* REQUERIMIENTO 3: CONTROL DE TURNOS (INICIAR, PAUSAR/MEDIO TIEMPO, CERRAR) */}
+          {/* REQUERIMIENTO 3: BOTONES DE INICIAR Y CERRAR TURNO (TURNO PARTIDO Y CONTINUO) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center space-x-2">
-                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">
-                    3. Control de Turno de Hoy ({isTurnoPartido ? 'Turno Partido' : 'Jornada Continua'})
-                  </h3>
+                  <h3 className="font-black text-sm text-slate-900">3. Control Operativo de Turno</h3>
                   <p className="text-xs text-slate-500">
-                    Cliente asignado hoy: <strong>{clienteHoy}</strong>
+                    Cliente Hoy: <strong className="text-slate-900">{clienteHoy}</strong> ({isTurnoPartido ? 'Turno Partido' : 'Jornada Continua'})
                   </p>
                 </div>
               </div>
-              <span className="text-xs font-mono font-bold text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg">
-                {isTurnoPartido ? '2 Tramos (Mañana / Tarde)' : '1 Tramo Continuo'}
+
+              <span
+                className={`px-3 py-1 rounded-xl text-xs font-black border ${
+                  shiftStatus === 'JORNADA_COMPLETADA'
+                    ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
+                    : shiftStatus === 'PENDIENTE_INICIO'
+                    ? 'bg-slate-100 text-slate-700 border-slate-300'
+                    : 'bg-blue-100 text-blue-950 border-blue-300'
+                }`}
+              >
+                Estado: {shiftStatus.replace('_', ' ')}
               </span>
             </div>
 
-            {/* Shift Flow Stage Cards */}
+            {/* Instruction Callout if Photo Not Taken */}
+            {!auditPhotoLocked && (
+              <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs font-bold text-amber-900 flex items-center space-x-2">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Atención:</strong> El botón de <strong>Iniciar Turno</strong> se encuentra inhabilitado hasta que registre la foto de auditoría obligatoria.
+                </span>
+              </div>
+            )}
+
+            {/* Action Buttons Container */}
             <div className="space-y-4">
               
-              {/* STAGE 1: PENDIENTE INICIO */}
+              {/* STAGE 1: INICIAR TURNO */}
               {shiftStatus === 'PENDIENTE_INICIO' && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-center">
-                  <div className="text-xs text-slate-600 font-medium">
-                    {auditPhotoLocked ? (
-                      <span className="text-emerald-700 font-bold flex items-center justify-center space-x-1">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Foto validada con éxito. Ya puede iniciar su turno de hoy.</span>
-                      </span>
-                    ) : (
-                      <span className="text-amber-700 font-bold flex items-center justify-center space-x-1">
-                        <AlertCircle className="w-4 h-4" />
-                        <span>Primero tome y bloquee la foto obligatoria arriba para habilitar el botón.</span>
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={!auditPhotoLocked}
-                    onClick={handleStartShift}
-                    className={`w-full py-3.5 px-4 font-black rounded-xl text-sm flex items-center justify-center space-x-2 shadow-md transition-all ${
-                      auditPhotoLocked
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer hover:scale-[1.01]'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Play className="w-5 h-5 fill-current" />
-                    <span>INICIAR TURNO {isTurnoPartido ? 'MAÑANA' : 'JORNADA'}</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={!auditPhotoLocked}
+                  onClick={handleStartShift}
+                  className={`w-full py-3.5 px-4 rounded-xl text-sm font-black flex items-center justify-center space-x-2 shadow-md transition-all ${
+                    auditPhotoLocked
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer hover:scale-[1.01] active:scale-[0.99]'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                  }`}
+                >
+                  <Play className="w-5 h-5 fill-current" />
+                  <span>INICIAR TURNO DE HOY</span>
+                </button>
               )}
 
-              {/* STAGE 2: TURNO PARTIDO - MAÑANA EN CURSO */}
+              {/* STAGE 2: TURNO PARTIDO - MAÑANA */}
               {isTurnoPartido && shiftStatus === 'INICIADO_MANANA' && (
                 <div className="space-y-3">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 font-bold flex items-center justify-between">
@@ -701,24 +580,32 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                     <span className="text-[11px] bg-blue-200 px-2 py-0.5 rounded-md">En Curso</span>
                   </div>
 
+                  {/* REQUERIMIENTO 3.1: BOTON CERRAR TURNO MAÑANA */}
                   <button
                     type="button"
                     onClick={handleCloseMorningShift}
                     className="w-full py-3.5 px-4 bg-amber-600 hover:bg-amber-500 text-white font-black rounded-xl text-sm flex items-center justify-center space-x-2 shadow-md cursor-pointer transition-all hover:scale-[1.01]"
                   >
                     <Square className="w-5 h-5 fill-current" />
-                    <span>CERRAR TURNO MAÑANA (IR A ALMUERZO/DESCANSO)</span>
+                    <span>CERRAR TURNO MAÑANA</span>
                   </button>
                 </div>
               )}
 
-              {/* STAGE 3: TURNO PARTIDO - ESPERANDO TARDE */}
+              {/* STAGE 3: TURNO PARTIDO - ESPERA O INICIAR TARDE */}
               {isTurnoPartido && shiftStatus === 'FINALIZADO_MANANA' && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-bold">
-                    ✓ Turno mañana cerrado a las: <strong>{horaFinManana}</strong>. En pausa de almuerzo/receso.
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-950 font-bold space-y-1">
+                    <p className="flex items-center space-x-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-amber-600" />
+                      <span>Turno Mañana Cerrado Exitosamente a las: <strong>{horaFinManana}</strong></span>
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      El turno de la tarde está programado a las <strong>14:00 (02:00 PM)</strong>.
+                    </p>
                   </div>
 
+                  {/* REQUERIMIENTO 3.1: HABILITAR TURNO TARDE A LA HORA PROGRAMADA */}
                   <button
                     type="button"
                     onClick={handleStartAfternoonShift}
@@ -741,6 +628,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                     <span className="text-[11px] bg-purple-200 px-2 py-0.5 rounded-md">En Curso</span>
                   </div>
 
+                  {/* REQUERIMIENTO 3.1: BOTON CERRAR TURNO TARDE */}
                   <button
                     type="button"
                     onClick={handleCloseFullShift}
@@ -752,7 +640,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                 </div>
               )}
 
-              {/* STAGE 5: JORNADA CONTINUA EN CURSO */}
+              {/* STAGE 5: JORNADA CONTINUA EN CURSO (REQUERIMIENTO 3.2) */}
               {!isTurnoPartido && shiftStatus === 'INICIADO_CONTINUA' && (
                 <div className="space-y-3">
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 font-bold flex items-center justify-between">
@@ -760,6 +648,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                     <span className="text-[11px] bg-blue-200 px-2 py-0.5 rounded-md">En Curso</span>
                   </div>
 
+                  {/* REQUERIMIENTO 3.2: BOTON CERRAR TURNO JORNADA CONTINUA */}
                   <button
                     type="button"
                     onClick={handleCloseFullShift}
@@ -788,7 +677,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: REGISTRO DIARIO, SALIDAS FUERA DE PERÍMETRO Y HORAS */}
+        {/* RIGHT COLUMN: REQUERIMIENTOS 4 & 5 - CANTIDAD DE PAQUETES Y VENTA DEL DÍA */}
         <div className="lg:col-span-5 space-y-6">
           <form onSubmit={handleSubmitReport} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-5">
             <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
@@ -797,8 +686,8 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                   <FileCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">4, 5 & Extras. Registro Diario de Producción</h3>
-                  <p className="text-xs text-slate-500">Paquetes, ventas, salidas fuera de perímetro y horas.</p>
+                  <h3 className="font-black text-sm text-slate-900">4 & 5. Registro de Entregas y Ventas</h3>
+                  <p className="text-xs text-slate-500">Ingreso manual diario del repartidor.</p>
                 </div>
               </div>
               {isSavedRecently && (
@@ -820,77 +709,14 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                 className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white cursor-pointer"
               >
                 <option value="Almacenes Éxito S.A.">Almacenes Éxito S.A.</option>
-                <option value="Sodimac Colombia S.A. (Homecenter)">Sodimac Colombia S.A. (Homecenter)</option>
-                <option value="Colombiana de Comercio S.A. (Alkosto)">Colombiana de Comercio S.A. (Alkosto)</option>
-                <option value="Droguerías Cruz Verde S.A.S.">Droguerías Cruz Verde S.A.S.</option>
+                <option value="Homecenter Colombia">Homecenter Colombia</option>
+                <option value="Decathlon Colombia">Decathlon Colombia</option>
+                <option value="Mercado Libre S.A.S.">Mercado Libre S.A.S.</option>
+                <option value="Alkosto S.A.">Alkosto S.A.</option>
               </select>
             </div>
 
-            {/* REQUERIMIENTO EXPLÍCITO: SALIDAS FUERA DEL PERÍMETRO */}
-            <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/90 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-amber-950 flex items-center space-x-1.5">
-                  <Compass className="w-4 h-4 text-amber-700" />
-                  <span>Salidas Fuera del Perímetro Urbano (Extra-Radio)</span>
-                </label>
-                <span className="text-[10px] font-extrabold bg-amber-200 text-amber-900 px-2 py-0.5 rounded">
-                  {salidasFueraCount > 0 ? `${salidasFueraCount} Salidas ($${(salidasFueraCount * tarifaSalidaPerimetro).toLocaleString('es-CO')})` : '0 Registradas'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="text-[10px] font-bold text-amber-900 block mb-1">Cantidad de Salidas:</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={20}
-                    value={salidasFueraCount}
-                    onChange={(e) => setSalidasFueraCount(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg font-mono font-black text-sm text-slate-900 focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-amber-900 block mb-1">Tarifa por Salida ($):</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={tarifaSalidaPerimetro}
-                    onChange={(e) => setTarifaSalidaPerimetro(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-white border border-amber-300 rounded-lg font-mono font-black text-sm text-amber-950 focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-amber-900 block mb-1">Destino / Municipio:</label>
-                <select
-                  value={destinoPerimetro}
-                  onChange={(e) => setDestinoPerimetro(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                >
-                  <option value="Yumbo (Zona Industrial / Acopi)">Yumbo (Zona Industrial / Acopi)</option>
-                  <option value="Jamundí (Ciudad Country / Alfaguara)">Jamundí (Ciudad Country / Alfaguara)</option>
-                  <option value="Palmira (Zona Franca / Centro)">Palmira (Zona Franca / Centro)</option>
-                  <option value="Candelaria / Poblado Campestre">Candelaria / Poblado Campestre</option>
-                  <option value="Puerto Tejada (Parques Industriales)">Puerto Tejada (Parques Industriales)</option>
-                  <option value="La Buitrera / Dapa / Zona Rural">La Buitrera / Dapa / Zona Rural</option>
-                </select>
-              </div>
-
-              <div>
-                <input
-                  type="text"
-                  placeholder="Justificación / Número de guía o remisión..."
-                  value={observacionPerimetro}
-                  onChange={(e) => setObservacionPerimetro(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs placeholder:text-slate-400 focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-            </div>
-
-            {/* REQUERIMIENTO 4: INGRESAR MANUALMENTE CANTIDAD DE PAQUETES */}
+            {/* REQUERIMIENTO 4: INGRESAR MANUALMENTE CANTIDAD DE PAQUETES (SOLO NUMERO SIN MAS INFORMACION) */}
             <div className="space-y-1.5">
               <label className="text-xs font-black text-slate-800 flex items-center space-x-1.5">
                 <Package className="w-4 h-4 text-blue-600" />
@@ -905,6 +731,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                 placeholder="Ej. 38"
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base font-black text-slate-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
               />
+              <p className="text-[11px] text-slate-500 italic">Unidades o pedidos entregados durante la jornada.</p>
             </div>
 
             {/* REQUERIMIENTO 5: INTRODUCIR LA VENTA DE ESE DÍA */}
@@ -925,81 +752,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                   className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                 />
               </div>
-            </div>
-
-            {/* DESGLOSE DE HORAS DEL TURNO */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
-              <div className="text-[11px] font-black text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>Desglose de Horas del Día (Base 42h)</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-600 block">Horas Ord:</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={horasOrd}
-                    onChange={(e) => setHorasOrd(parseFloat(e.target.value) || 0)}
-                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-blue-700 block">HED (+25%):</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={horasExtDiurnas}
-                    onChange={(e) => setHorasExtDiurnas(parseFloat(e.target.value) || 0)}
-                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-blue-900"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-indigo-700 block">HEN (+75%):</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={horasExtNocturnas}
-                    onChange={(e) => setHorasExtNocturnas(parseFloat(e.target.value) || 0)}
-                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-indigo-900"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-purple-700 block">Dom/Fest (+100%):</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={horasDomFestivas}
-                    onChange={(e) => setHorasDomFestivas(parseFloat(e.target.value) || 0)}
-                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-purple-900"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-indigo-600 block">Rec. Noct (+35%):</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={recargoNocturnoHoras}
-                    onChange={(e) => setRecargoNocturnoHoras(parseFloat(e.target.value) || 0)}
-                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-purple-600 block">Rec. Fest (+75%):</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={12}
-                    value={recargoFestivoHoras}
-                    onChange={(e) => setRecargoFestivoHoras(parseFloat(e.target.value) || 0)}
-                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
-                  />
-                </div>
-              </div>
+              <p className="text-[11px] text-slate-500 italic">Valor total cobrado/liquidado por ventas en entregas.</p>
             </div>
 
             {/* Submit Button */}
@@ -1023,6 +776,12 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                 </>
               )}
             </button>
+
+            {isSavedRecently && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-extrabold text-emerald-900 text-center animate-fade-in">
+                ✓ Reporte enviado a la base de datos de operación y cliente.
+              </div>
+            )}
           </form>
 
           {/* MIS REPORTES REGISTRADOS LIST */}
@@ -1032,7 +791,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                 <FileCheck className="w-4 h-4 text-indigo-600" />
                 <span>Mis Reportes Registrados ({driverReports.length})</span>
               </h4>
-              <span className="text-[10px] font-bold text-slate-400">Total Período</span>
+              <span className="text-[10px] font-bold text-slate-400">Total Hoy</span>
             </div>
 
             {driverReports.length === 0 ? (
@@ -1050,11 +809,6 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                       <div className="font-bold text-slate-900">{rep.nombreCliente}</div>
                       <div className="text-[10px] font-mono text-slate-500">
                         {rep.fecha} | Placa: <strong className="text-amber-700">{rep.placaVehiculo}</strong>
-                        {rep.salidasFueraPerimetro > 0 && (
-                          <span className="ml-1.5 text-amber-800 font-bold bg-amber-100 px-1 rounded">
-                            {rep.salidasFueraPerimetro} Fuera Perímetro
-                          </span>
-                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -1081,7 +835,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
               <p>• Repartidor: <strong>{selectedDriver?.nombre} {selectedDriver?.apellido}</strong></p>
               <p>• Cédula: <strong className="font-mono">{selectedDriver?.cedula}</strong></p>
               <p>• Placa de Vehículo: <strong className="font-mono text-red-700 font-black">{selectedDriver?.placaVehiculo || 'VTX-89D'}</strong></p>
-              <p>• Jornada Semanal Máxima: <strong className="text-purple-900 font-bold">42 Horas Semanales</strong></p>
+              <p>• Jefe de Zona: <strong>Carlos Gómez (Cali Norte)</strong></p>
             </div>
           </div>
         </div>
