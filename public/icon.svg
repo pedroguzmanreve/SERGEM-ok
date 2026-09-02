@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sergemGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444" />
+      <stop offset="100%" stop-color="#B91C1C" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#7F1D1D" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- Background with Safe Padding for Maskable & Any -->
+  <rect width="512" height="512" rx="112" fill="url(#sergemGrad)"/>
+  
+  <!-- Subtle Internal Highlight -->
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-opacity="0.15"/>
+  
+  <!-- SERGEM S.A.S. Monogram Emblem -->
+  <g filter="url(#shadow)" fill="#FFFFFF">
+    <path d="M 256 110 L 360 170 L 360 300 C 360 370 256 414 256 414 C 256 414 152 370 152 300 L 152 170 Z" fill="#FFFFFF" fill-opacity="0.12" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="round"/>
+    
+    <!-- Letter S Stylized in Center -->
+    <path d="M 292 205 C 285 195 272 188 256 188 C 234 188 220 200 220 215 C 220 230 232 238 258 245 C 288 253 306 265 306 290 C 306 318 282 334 254 334 C 230 334 212 322 202 305" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
