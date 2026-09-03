@@ -40,8 +40,19 @@ export enum OperationType {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const errCode = (error as { code?: string })?.code || 'unknown';
+  
+  console.error(`❌ [Firestore Connection/Data Error] [Op: ${operationType}] [Path: ${path || 'unknown'}]:`, {
+    code: errCode,
+    message: errMsg,
+    authenticatedUser: auth.currentUser ? `${auth.currentUser.email} (${auth.currentUser.uid})` : 'Unauthenticated',
+    timestamp: new Date().toISOString(),
+  });
+
   const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
+    code: errCode,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -51,7 +62,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -61,6 +71,7 @@ export const saveUserProfileToFirestore = async (profile: AppUserProfile): Promi
     const userRef = doc(db, USERS_COLLECTION, profile.uid);
     await setDoc(userRef, profile, { merge: true });
   } catch (error) {
+    console.error(`❌ [Firestore Error] Falló el guardado del perfil de usuario (${profile.uid}):`, error);
     handleFirestoreError(error, OperationType.WRITE, `${USERS_COLLECTION}/${profile.uid}`);
   }
 };
@@ -74,6 +85,7 @@ export const getUserProfileFromFirestore = async (uid: string): Promise<AppUserP
     }
     return null;
   } catch (error) {
+    console.error(`❌ [Firestore Error] Falló la lectura del perfil de usuario (${uid}):`, error);
     handleFirestoreError(error, OperationType.GET, `${USERS_COLLECTION}/${uid}`);
     return null;
   }
@@ -95,7 +107,7 @@ export const subscribeUserProfile = (
       }
     },
     (error) => {
-      console.warn('Error subscribing to user profile:', error);
+      console.error(`❌ [Firestore Connection Error] Error al suscribirse al perfil de usuario (${uid}):`, error);
       if (onError) onError(error);
     }
   );
@@ -116,7 +128,7 @@ export const subscribeEmployees = (onData: (data: Employee[]) => void, onError?:
       }
     },
     (error) => {
-      console.warn('Error fetching employees from Firestore:', error);
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "employees":', error);
       if (onError) onError(error);
     }
   );
@@ -137,7 +149,7 @@ export const subscribeSchedules = (onData: (data: WeeklySchedule[]) => void, onE
       }
     },
     (error) => {
-      console.warn('Error fetching schedules from Firestore:', error);
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "schedules":', error);
       if (onError) onError(error);
     }
   );
@@ -158,7 +170,7 @@ export const subscribeZoneNovedades = (onData: (data: ZoneChiefNovedad[]) => voi
       }
     },
     (error) => {
-      console.warn('Error fetching zone novedades from Firestore:', error);
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "zoneNovedades":', error);
       if (onError) onError(error);
     }
   );
@@ -179,7 +191,7 @@ export const subscribeClientReports = (onData: (data: ClientOrderReport[]) => vo
       }
     },
     (error) => {
-      console.warn('Error fetching client reports from Firestore:', error);
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "clientReports":', error);
       if (onError) onError(error);
     }
   );
@@ -200,7 +212,7 @@ export const subscribePeriods = (onData: (data: PayrollPeriod[]) => void, onErro
       }
     },
     (error) => {
-      console.warn('Error fetching periods from Firestore:', error);
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "periods":', error);
       if (onError) onError(error);
     }
   );
@@ -217,7 +229,7 @@ export const subscribeCompanySettings = (onData: (data: CompanySettings) => void
       }
     },
     (error) => {
-      console.warn('Error fetching company settings from Firestore:', error);
+      console.error('❌ [Firestore Connection Error] Error al leer configuración de empresa en "settings/company":', error);
       if (onError) onError(error);
     }
   );
@@ -228,7 +240,7 @@ export const saveEmployeeToFirestore = async (emp: Employee): Promise<void> => {
   try {
     await setDoc(doc(db, EMPLOYEES_COLLECTION, emp.id), emp, { merge: true });
   } catch (err) {
-    console.error('Error saving employee to Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudo guardar el empleado (${emp.id}) en Firestore:`, err);
     throw err;
   }
 };
@@ -237,7 +249,7 @@ export const deleteEmployeeFromFirestore = async (empId: string): Promise<void> 
   try {
     await deleteDoc(doc(db, EMPLOYEES_COLLECTION, empId));
   } catch (err) {
-    console.error('Error deleting employee from Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudo eliminar el empleado (${empId}) de Firestore:`, err);
     throw err;
   }
 };
@@ -246,7 +258,7 @@ export const saveScheduleToFirestore = async (schedule: WeeklySchedule): Promise
   try {
     await setDoc(doc(db, SCHEDULES_COLLECTION, schedule.id), schedule, { merge: true });
   } catch (err) {
-    console.error('Error saving schedule to Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudo guardar el horario (${schedule.id}) en Firestore:`, err);
     throw err;
   }
 };
@@ -255,7 +267,7 @@ export const saveZoneNovedadToFirestore = async (novedad: ZoneChiefNovedad): Pro
   try {
     await setDoc(doc(db, NOVEDADES_COLLECTION, novedad.id), novedad, { merge: true });
   } catch (err) {
-    console.error('Error saving novedad to Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudo guardar la novedad (${novedad.id}) en Firestore:`, err);
     throw err;
   }
 };
@@ -264,7 +276,7 @@ export const saveClientReportToFirestore = async (report: ClientOrderReport): Pr
   try {
     await setDoc(doc(db, CLIENT_REPORTS_COLLECTION, report.id), report, { merge: true });
   } catch (err) {
-    console.error('Error saving client report to Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudo guardar el reporte de cliente (${report.id}) en Firestore:`, err);
     throw err;
   }
 };
@@ -273,7 +285,7 @@ export const savePeriodToFirestore = async (period: PayrollPeriod): Promise<void
   try {
     await setDoc(doc(db, PERIODS_COLLECTION, period.id), period, { merge: true });
   } catch (err) {
-    console.error('Error saving period to Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudo guardar el periodo (${period.id}) en Firestore:`, err);
     throw err;
   }
 };
@@ -282,7 +294,7 @@ export const saveCompanySettingsToFirestore = async (settings: CompanySettings):
   try {
     await setDoc(doc(db, SETTINGS_COLLECTION, 'company'), settings, { merge: true });
   } catch (err) {
-    console.error('Error saving settings to Firestore:', err);
+    console.error('❌ [Firestore Write Error] No se pudo guardar la configuración de empresa en Firestore:', err);
     throw err;
   }
 };
@@ -294,7 +306,7 @@ export const savePeriodNovedadesToFirestore = async (
   try {
     await setDoc(doc(db, NOVEDADES_MAP_COLLECTION, periodId), { map: novedadesMap }, { merge: true });
   } catch (err) {
-    console.error('Error saving period novedades to Firestore:', err);
+    console.error(`❌ [Firestore Write Error] No se pudieron guardar las novedades del periodo (${periodId}) en Firestore:`, err);
     throw err;
   }
 };

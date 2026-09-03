@@ -186,7 +186,9 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
       setUserProfile(newProfile);
     } catch (err: any) {
       console.error('Error creating user with email:', err);
-      if (err.code === 'auth/email-already-in-use') {
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('El proveedor Correo/Contraseña (Email/Password) aún no está habilitado en Firebase Console > Authentication > Sign-in method. Puedes ingresar con Google o usar el Acceso Rápido por Rol mientras lo habilitas.');
+      } else if (err.code === 'auth/email-already-in-use') {
         setError('Este correo ya se encuentra registrado. Inicia sesión directamente.');
       } else if (err.code === 'auth/weak-password') {
         setError('La contraseña debe tener al menos 6 caracteres.');
