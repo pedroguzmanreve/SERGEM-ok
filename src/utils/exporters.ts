@@ -1,5 +1,94 @@
+import * as XLSX from 'xlsx';
 import { CompanySettings, PayrollCalculationItem, PayrollPeriod } from '../types/payroll';
 import { formatCurrency } from './payrollCalculator';
+
+const escapeCSVCell = (val: string | number | null | undefined): string => {
+  if (val === null || val === undefined) return '""';
+  const str = String(val).replace(/"/g, '""');
+  return `"${str}"`;
+};
+
+// Exporting full payroll report to official Excel (.XLSX) format
+export function exportPayrollToExcel(
+  items: PayrollCalculationItem[],
+  period: PayrollPeriod,
+  company: CompanySettings
+): void {
+  const wb = XLSX.utils.book_new();
+
+  const sheetData: (string | number)[][] = [
+    [company.nombreEmpresa.toUpperCase()],
+    [`NIT: ${company.nit} | Sistema de Liquidación y Nómina Electrónica 2026`],
+    [`PERIODO: ${period.nombrePeriodo} (${period.fechaInicio} a ${period.fechaFin})`],
+    [`GENERADO: ${new Date().toLocaleString('es-CO')}`],
+    [],
+    [
+      'ID',
+      'Cédula',
+      'Empleado',
+      'Cargo',
+      'Departamento',
+      'Salario Base',
+      'Días Trab.',
+      'Sueldo',
+      'Aux. Transporte',
+      'Horas Extras/Recargos',
+      'Comisiones/Bonif.',
+      'Total Devengado',
+      'Salud (4%)',
+      'Pensión (4%)',
+      'FSP',
+      'Otras Deducc.',
+      'Total Deducciones',
+      'Neto a Pagar',
+      'Carga Patronal SS/Parafiscales',
+      'Provisiones Prestaciones',
+      'Costo Total Empresa'
+    ]
+  ];
+
+  items.forEach(item => {
+    sheetData.push([
+      item.employee.id,
+      item.employee.cedula,
+      `${item.employee.nombre} ${item.employee.apellido}`,
+      item.employee.cargo,
+      item.employee.departamento,
+      item.employee.salarioBase,
+      item.novedades.diasTrabajados,
+      item.sueldoTrabajado,
+      item.auxilioTransporte,
+      item.totalHorasExtrasYRecargos,
+      item.comisiones + item.bonificacionesConstitutivas + item.bonificacionesNoConstitutivas,
+      item.totalDevengado,
+      item.deduccionSalud,
+      item.deduccionPension,
+      item.fondoSolidaridadPensional,
+      item.prestamos + item.otrasDeducciones + item.retencionFuente,
+      item.totalDeducciones,
+      item.netoAPagar,
+      item.totalSeguridadSocialEmpresa + item.totalParafiscalesEmpresa,
+      item.totalProvisionesEmpresa,
+      item.costoTotalEmpresa
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  XLSX.utils.book_append_sheet(wb, ws, 'Nomina');
+
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Nomina_SERGEM_${period.id}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 // Exporting full payroll report to CSV
 export function exportPayrollToCSV(
@@ -34,9 +123,9 @@ export function exportPayrollToCSV(
   const rows = items.map(item => [
     item.employee.id,
     item.employee.cedula,
-    `"${item.employee.nombre} ${item.employee.apellido}"`,
-    `"${item.employee.cargo}"`,
-    `"${item.employee.departamento}"`,
+    `${item.employee.nombre} ${item.employee.apellido}`,
+    item.employee.cargo,
+    item.employee.departamento,
     item.employee.salarioBase,
     item.novedades.diasTrabajados,
     item.sueldoTrabajado,
@@ -55,16 +144,11 @@ export function exportPayrollToCSV(
     item.costoTotalEmpresa
   ]);
 
-  const csvContent = [
-    `# REPORTE CONSOLIDADO DE NOMINA - ${company.nombreEmpresa.toUpperCase()}`,
-    `# PERIODO: ${period.nombrePeriodo} (${period.fechaInicio} a ${period.fechaFin})`,
-    `# GENERADO: ${new Date().toLocaleString('es-CO')}`,
-    '',
-    headers.join(','),
-    ...rows.map(row => row.join(','))
-  ].join('\n');
+  const headerLine = headers.map(escapeCSVCell).join(';');
+  const dataLines = rows.map(r => r.map(escapeCSVCell).join(';'));
+  const csvContent = '\uFEFF' + [headerLine, ...dataLines].join('\r\n');
 
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
@@ -72,6 +156,7 @@ export function exportPayrollToCSV(
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 // Generate Bank Flat File for Mass Payment (Bancolombia PAB format)

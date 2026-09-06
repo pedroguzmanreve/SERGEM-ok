@@ -4,8 +4,18 @@ import {
   WeeklySchedule,
   ZoneChiefNovedad,
   ShiftDetails,
-  ShiftType
+  ShiftType,
+  AppRole,
+  AppUserProfile,
+  DriverAttendanceRecord,
+  ClientOrderReport,
 } from '../types/payroll';
+import { UnconnectedDriversSection } from './UnconnectedDriversSection';
+import {
+  getCurrentDateTimeInfo,
+  buildCallLink,
+  buildDriverShiftWhatsAppLink
+} from '../utils/attendanceService';
 import {
   Calendar,
   Clock,
@@ -23,17 +33,25 @@ import {
   CalendarDays,
   ShieldAlert,
   Users,
-  X
+  X,
+  ShieldCheck,
+  Phone,
+  MessageCircle
 } from 'lucide-react';
 
 interface ZoneChiefPortalViewProps {
   employees: Employee[];
   schedules: WeeklySchedule[];
   novedades: ZoneChiefNovedad[];
+  attendanceRecords?: DriverAttendanceRecord[];
+  clientReports?: ClientOrderReport[];
   onSaveSchedule: (schedule: WeeklySchedule) => void;
   onDeleteSchedule: (scheduleId: string) => void;
   onAddNovedad: (novedad: ZoneChiefNovedad) => void;
   onDeleteNovedad: (novedadId: string) => void;
+  onRecordAttendance?: (record: DriverAttendanceRecord) => void;
+  currentRole?: AppRole;
+  userProfile?: AppUserProfile | null;
 }
 
 const DAYS_OF_WEEK: ('Lunes' | 'Martes' | 'Miércoles' | 'Jueves' | 'Viernes' | 'Sábado' | 'Domingo')[] = [
@@ -62,16 +80,59 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
   employees,
   schedules,
   novedades,
+  attendanceRecords = [],
+  clientReports = [],
   onSaveSchedule,
   onDeleteSchedule,
   onAddNovedad,
   onDeleteNovedad,
+  onRecordAttendance,
+  currentRole = 'Jefe de Zona',
+  userProfile,
 }) => {
+  const isChiefRole = currentRole === 'Jefe de Zona';
+
   // Select active Zone Chief
   const jefesDeZona = employees.filter((e) => e.rol === 'Jefe de Zona');
-  const [selectedJefeId, setSelectedJefeId] = useState<string>(
-    jefesDeZona[0]?.id || ''
-  );
+
+  const myChiefRecord = React.useMemo<Employee>(() => {
+    const found = employees.find(
+      (emp) =>
+        (userProfile?.employeeId && emp.id === userProfile.employeeId) ||
+        (userProfile?.email && emp.email?.toLowerCase() === userProfile.email.toLowerCase())
+    );
+    if (found) return found;
+
+    return {
+      id: userProfile?.employeeId || 'CHIEF-01',
+      cedula: userProfile?.cedula || '1018999888',
+      nombre: userProfile?.displayName?.split(' ')[0] || 'Carlos',
+      apellido: userProfile?.displayName?.split(' ').slice(1).join(' ') || 'Restrepo',
+      cargo: 'Jefe de Operaciones y Zona',
+      departamento: 'Logística y Despachos',
+      salarioBase: 2600000,
+      tipoContrato: 'Término Indefinido',
+      nivelRiesgoARL: 1,
+      fechaIngreso: '2026-01-01',
+      banco: 'Bancolombia',
+      tipoCuenta: 'Ahorros',
+      numeroCuenta: '300-000000-01',
+      eps: 'Sura EPS',
+      afp: 'Protección',
+      ccf: 'Comfandi',
+      activo: true,
+      rol: 'Jefe de Zona',
+      email: userProfile?.email || 'carlos.restrepo@sergem.com.co',
+    };
+  }, [employees, userProfile]);
+
+  const [selectedJefeId, setSelectedJefeId] = useState<string>(() => {
+    if (isChiefRole) return myChiefRecord.id;
+    return jefesDeZona[0]?.id || myChiefRecord.id;
+  });
+
+  const effectiveJefeId = isChiefRole ? myChiefRecord.id : (selectedJefeId || myChiefRecord.id);
+
   const [selectedWeek, setSelectedWeek] = useState<string>('2026-08-03');
   const [filterClient, setFilterClient] = useState<string>('TODOS');
 
@@ -80,7 +141,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
   // Repartidores assigned to this Zone Chief or with schedules in the active week
   const repartidoresAsignados = employees.filter((e) => {
     if (e.rol !== 'Repartidor') return false;
-    const isAssigned = !e.jefeZonaId || e.jefeZonaId === selectedJefeId;
+    const isAssigned = !e.jefeZonaId || e.jefeZonaId === effectiveJefeId;
     const hasScheduleInWeek = schedules.some(
       (s) => s.repartidorId === e.id && s.semanaInicio === selectedWeek
     );
@@ -123,12 +184,12 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
         jefeZonaId: selectedJefeId,
         semanaInicio: selectedWeek,
         dias: {
-          Lunes: { tipo: 'Partido', clienteNombre: 'Almacenes Éxito S.A.', horaInicio1: '07:00', horaFin1: '11:00', horaInicio2: '14:00', horaFin2: '18:00' },
-          Martes: { tipo: 'Continua', clienteNombre: 'Droguerías Comfandi', horaInicio1: '07:00', horaFin1: '15:00' },
-          Miércoles: { tipo: 'Partido', clienteNombre: 'Nutresa Logistics', horaInicio1: '07:00', horaFin1: '11:00', horaInicio2: '14:00', horaFin2: '18:00' },
-          Jueves: { tipo: 'Continua', clienteNombre: 'Almacenes Éxito S.A.', horaInicio1: '08:00', horaFin1: '16:00' },
-          Viernes: { tipo: 'Partido', clienteNombre: 'Banco Davivienda S.A.', horaInicio1: '07:00', horaFin1: '11:00', horaInicio2: '14:00', horaFin2: '18:00' },
-          Sábado: { tipo: 'Continua', clienteNombre: 'Postobón S.A.', horaInicio1: '08:00', horaFin1: '13:00' },
+          Lunes: { tipo: 'Descanso' },
+          Martes: { tipo: 'Descanso' },
+          Miércoles: { tipo: 'Descanso' },
+          Jueves: { tipo: 'Descanso' },
+          Viernes: { tipo: 'Descanso' },
+          Sábado: { tipo: 'Descanso' },
           Domingo: { tipo: 'Descanso' },
         },
       });
@@ -297,27 +358,82 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
           </p>
         </div>
 
-        {/* Chief Selector */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-300/90 shadow-2xs flex items-center space-x-3.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center border border-red-200 shrink-0">
-            <Building2 className="w-5 h-5" />
+        {/* Chief Selector or Locked Identity Badge */}
+        {isChiefRole ? (
+          <div className="bg-white p-4 rounded-2xl border border-amber-300 shadow-2xs flex items-center space-x-3.5 shrink-0 max-w-xs">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center border border-amber-200 shrink-0">
+              <UserCheck className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="text-[10px] font-black uppercase text-amber-800 tracking-wider">
+                Jefe de Zona Autenticado
+              </div>
+              <div className="text-xs sm:text-sm font-black text-slate-900 leading-tight">
+                {myChiefRecord.nombre} {myChiefRecord.apellido}
+              </div>
+              <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                C.C. {myChiefRecord.cedula} • {myChiefRecord.cargo}
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-[10px] font-black text-slate-700 uppercase mb-0.5">Jefe de Zona Activo:</label>
-            <select
-              value={selectedJefeId}
-              onChange={(e) => setSelectedJefeId(e.target.value)}
-              className="bg-slate-50 text-slate-900 font-extrabold text-xs py-1.5 px-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-red-500 cursor-pointer"
-            >
-              {jefesDeZona.map((jefe) => (
-                <option key={jefe.id} value={jefe.id}>
-                  {jefe.nombre} {jefe.apellido} ({jefe.cargo})
-                </option>
-              ))}
-            </select>
+        ) : (
+          <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-2xs flex items-center space-x-3.5 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center border border-purple-200 shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-purple-800 uppercase mb-0.5">Supervisar Jefe de Zona (Admin):</label>
+              {jefesDeZona.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">No hay jefes de zona registrados aún.</p>
+              ) : (
+                <select
+                  value={selectedJefeId}
+                  onChange={(e) => setSelectedJefeId(e.target.value)}
+                  className="bg-slate-50 text-slate-900 font-extrabold text-xs py-1.5 px-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                >
+                  {jefesDeZona.map((jefe) => (
+                    <option key={jefe.id} value={jefe.id}>
+                      {jefe.nombre} {jefe.apellido} ({jefe.cargo})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
+
+      {/* Driver Shift Attendance & Contact Section (Solo Jefe de Zona) */}
+      <UnconnectedDriversSection
+        employees={employees}
+        schedules={schedules}
+        attendanceRecords={attendanceRecords}
+        clientReports={clientReports}
+        jefeZonaId={effectiveJefeId}
+        variant="chief-portal"
+        title="🚨 Repartidores No Conectados a su Turno (Llamada / WhatsApp)"
+        subtitle="Monitoreo de asistencia para el día de hoy según la programación oficial. Comunícate de inmediato con el colaborador si no ha registrado inicio de turno."
+        onQuickRecordAttendance={(empId) => {
+          const emp = employees.find((e) => e.id === empId);
+          if (emp && onRecordAttendance) {
+            const info = getCurrentDateTimeInfo();
+            onRecordAttendance({
+              id: `${emp.id}_${info.fecha}`,
+              repartidorId: emp.id,
+              nombreRepartidor: `${emp.nombre} ${emp.apellido}`,
+              fecha: info.fecha,
+              diaSemana: info.diaSemana,
+              horaInicioReal: info.horaActual,
+              estado: 'CONECTADO',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }}
+        onOpenNovedadModal={(empId) => {
+          setNovRepartidorId(empId);
+          setActiveSubTab('novedades_horas');
+        }}
+      />
 
       {/* Week Selector and Sub-Navigation */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -456,6 +572,11 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                     const schedule = schedules.find(
                       (s) => s.repartidorId === rep.id && s.semanaInicio === selectedWeek
                     );
+                    const assignedClient = schedule
+                      ? (Object.values(schedule.dias) as Array<{ clienteNombre?: string } | undefined>).find(
+                          (d) => d && d.clienteNombre
+                        )?.clienteNombre
+                      : undefined;
 
                   return (
                     <div key={rep.id} className="p-5 hover:bg-slate-50/80 transition-colors space-y-3">
@@ -469,12 +590,42 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                               {rep.nombre} {rep.apellido}
                             </div>
                             <div className="text-xs text-slate-500">
-                              Placa: <span className="font-mono font-bold text-slate-800">{rep.placaVehiculo || 'Sin Placa'}</span> • C.C. {rep.cedula}
+                              Placa: <span className="font-mono font-bold text-slate-800">{rep.placaVehiculo || 'Sin Placa'}</span> • C.C. {rep.cedula} • Tel: <span className="font-mono font-semibold text-slate-700">{rep.telefono || 'Sin registrar'}</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center space-x-2">
+                        {/* Action Buttons: Permanent Contact & Shift Scheduling */}
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+                          {/* Permanent Call Button */}
+                          <a
+                            href={buildCallLink(rep.telefono)}
+                            id={`btn-call-shift-${rep.id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 text-xs font-bold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                            title={`Llamar a ${rep.nombre} (${rep.telefono || 'Sin teléfono'})`}
+                          >
+                            <Phone className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Llamar</span>
+                          </a>
+
+                          {/* Permanent WhatsApp Button */}
+                          <a
+                            href={buildDriverShiftWhatsAppLink(
+                              rep.telefono,
+                              `${rep.nombre} ${rep.apellido}`,
+                              selectedWeek,
+                              assignedClient
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            id={`btn-whatsapp-shift-${rep.id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-extrabold shadow-2xs transition-colors cursor-pointer"
+                            title={`Escribir por WhatsApp a ${rep.nombre} (${rep.telefono || 'Sin teléfono'})`}
+                          >
+                            <MessageCircle className="w-3.5 h-3.5 text-white" />
+                            <span>WhatsApp</span>
+                          </a>
+
                           {schedule && (
                             <button
                               onClick={() => onDeleteSchedule(schedule.id)}
@@ -864,6 +1015,40 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                         </option>
                       ))}
                   </select>
+
+                  {/* Immediate WhatsApp / Call to Driver in Schedule Modal */}
+                  {(() => {
+                    const selectedModalRep = employees.find((e) => e.id === editingSchedule.repartidorId);
+                    if (!selectedModalRep) return null;
+                    return (
+                      <div className="flex items-center gap-2 mt-2 pt-1 border-t border-slate-200/80">
+                        <a
+                          href={buildCallLink(selectedModalRep.telefono)}
+                          id="btn-modal-call-driver"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                          title={`Llamar a ${selectedModalRep.nombre}`}
+                        >
+                          <Phone className="w-3 h-3 text-blue-600" />
+                          <span>Llamar ({selectedModalRep.telefono || 'Sin teléfono'})</span>
+                        </a>
+                        <a
+                          href={buildDriverShiftWhatsAppLink(
+                            selectedModalRep.telefono,
+                            `${selectedModalRep.nombre} ${selectedModalRep.apellido}`,
+                            editingSchedule.semanaInicio
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          id="btn-modal-whatsapp-driver"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold shadow-2xs transition-colors cursor-pointer"
+                          title={`WhatsApp a ${selectedModalRep.nombre}`}
+                        >
+                          <MessageCircle className="w-3 h-3 text-white" />
+                          <span>WhatsApp</span>
+                        </a>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div>

@@ -1,28 +1,47 @@
 import React, { useState } from 'react';
-import { CompanySettings, PayrollPeriod, AppRole } from '../types/payroll';
+import {
+  CompanySettings,
+  PayrollPeriod,
+  AppRole,
+  Employee,
+  WeeklySchedule,
+  DriverAttendanceRecord,
+  ClientOrderReport,
+} from '../types/payroll';
 import { ShieldCheck, Settings, Truck, Database, LogOut, ChevronDown, User, CalendarDays } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { AdminAttendanceNotification } from './AdminAttendanceNotification';
 
 interface HeaderProps {
   company: CompanySettings;
   activePeriod: PayrollPeriod;
   periods: PayrollPeriod[];
+  employees?: Employee[];
+  schedules?: WeeklySchedule[];
+  attendanceRecords?: DriverAttendanceRecord[];
+  clientReports?: ClientOrderReport[];
   firebaseConnected?: boolean;
   isSyncing?: boolean;
   onSelectPeriod: (periodId: string) => void;
   onOpenSettings: () => void;
   onNewPeriod: () => void;
+  onNavigateToPortal?: (portal: any) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   company,
   activePeriod: _activePeriod,
   periods: _periods,
+  employees = [],
+  schedules = [],
+  attendanceRecords = [],
+  clientReports = [],
   firebaseConnected = true,
   isSyncing = false,
   onSelectPeriod: _onSelectPeriod,
   onOpenSettings,
   onNewPeriod: _onNewPeriod,
+  onNavigateToPortal,
 }) => {
   const { userProfile, currentRole, switchRole, logout } = useAuth();
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
@@ -111,75 +130,103 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          {/* User Role Badge & Switcher */}
-          <div className="relative">
-            <button
-              id="user-role-badge-button"
-              type="button"
-              onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${roleStyle.bg} shadow-2xs hover:opacity-90 active:scale-95`}
-              title="Cambiar o simular rol de usuario"
+          {/* Admin Shift Connection Notification Bell */}
+          {currentRole === 'Administrativo' && (
+            <AdminAttendanceNotification
+              employees={employees}
+              schedules={schedules}
+              attendanceRecords={attendanceRecords}
+              clientReports={clientReports}
+              onNavigateToPortal={onNavigateToPortal}
+            />
+          )}
+
+          {/* User Role Badge (Locked for Repartidor and Jefe de Zona, only Administrator can switch) */}
+          {currentRole !== 'Administrativo' ? (
+            <div
+              id="user-role-badge-locked"
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold ${roleStyle.bg} shadow-2xs select-none`}
+              title={`Acceso asignado: ${roleStyle.label}`}
             >
               <RoleIcon className="w-3.5 h-3.5" />
               <div className="text-left hidden sm:block">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold leading-none">
-                  Rol Activo
+                  Rol Asignado
                 </div>
                 <div className="leading-tight">{roleStyle.label}</div>
               </div>
               <span className="sm:hidden">{roleStyle.label}</span>
-              <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
-            </button>
-
-            {/* Role Switcher Menu */}
-            {isRoleMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setIsRoleMenuOpen(false)}
-                />
-                <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95">
-                  <div className="px-3 py-2 border-b border-slate-100">
-                    <p className="text-xs font-bold text-slate-800 line-clamp-1">
-                      {userProfile?.displayName || 'Usuario SERGEM'}
-                    </p>
-                    <p className="text-[11px] text-slate-500 line-clamp-1">
-                      {userProfile?.email || 'pedroguzman@revesolution.net'}
-                    </p>
+            </div>
+          ) : (
+            <div className="relative">
+              <button
+                id="user-role-badge-button"
+                type="button"
+                onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${roleStyle.bg} shadow-2xs hover:opacity-90 active:scale-95`}
+                title="Supervisar roles del sistema"
+              >
+                <RoleIcon className="w-3.5 h-3.5" />
+                <div className="text-left hidden sm:block">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold leading-none">
+                    Rol Administrador
                   </div>
-                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Cambiar Vista de Rol
-                  </div>
-                  {(['Administrativo', 'Jefe de Zona', 'Repartidor'] as AppRole[]).map((r) => {
-                    const rStyle = getRoleBadgeStyle(r);
-                    const RIcon = rStyle.icon;
-                    const isSelected = currentRole === r;
-                    return (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => {
-                          switchRole(r);
-                          setIsRoleMenuOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 flex items-center justify-between text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer ${
-                          isSelected ? 'text-red-700 bg-red-50/70 font-bold' : 'text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <RIcon className="w-4 h-4 text-slate-500" />
-                          <span>{rStyle.label}</span>
-                        </div>
-                        {isSelected && (
-                          <span className="w-2 h-2 rounded-full bg-red-600" />
-                        )}
-                      </button>
-                    );
-                  })}
+                  <div className="leading-tight">{roleStyle.label}</div>
                 </div>
-              </>
-            )}
-          </div>
+                <span className="sm:hidden">{roleStyle.label}</span>
+                <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+              </button>
+
+              {/* Role Switcher Menu */}
+              {isRoleMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsRoleMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in zoom-in-95">
+                    <div className="px-3 py-2 border-b border-slate-100">
+                      <p className="text-xs font-bold text-slate-800 line-clamp-1">
+                        {userProfile?.displayName || 'Administrador SERGEM'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 line-clamp-1">
+                        {userProfile?.email || 'pedroguzman@revesolution.net'}
+                      </p>
+                    </div>
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Supervisar Portales
+                    </div>
+                    {(['Administrativo', 'Jefe de Zona', 'Repartidor'] as AppRole[]).map((r) => {
+                      const rStyle = getRoleBadgeStyle(r);
+                      const RIcon = rStyle.icon;
+                      const isSelected = currentRole === r;
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => {
+                            switchRole(r);
+                            setIsRoleMenuOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 flex items-center justify-between text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer ${
+                            isSelected ? 'text-red-700 bg-red-50/70 font-bold' : 'text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <RIcon className="w-4 h-4 text-slate-500" />
+                            <span>{rStyle.label}</span>
+                          </div>
+                          {isSelected && (
+                            <span className="w-2 h-2 rounded-full bg-red-600" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Settings Button (Only for Admin) */}
           {currentRole === 'Administrativo' && (

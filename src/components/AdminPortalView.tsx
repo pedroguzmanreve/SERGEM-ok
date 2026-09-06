@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { Employee, UserRole } from '../types/payroll';
+import {
+  Employee,
+  UserRole,
+  WeeklySchedule,
+  DriverAttendanceRecord,
+  ClientOrderReport,
+} from '../types/payroll';
+import { InviteEmailModal } from './InviteEmailModal';
+import { buildEmployeeInvite, dispatchNativeEmailInvite } from '../services/emailInviteService';
+import { UnconnectedDriversSection } from './UnconnectedDriversSection';
 import {
   Users,
   UserPlus,
@@ -17,24 +26,47 @@ import {
   UserCheck,
   Briefcase,
   Sparkles,
-  Building2
+  Building2,
+  Trash2,
+  AlertTriangle,
+  ExternalLink,
+  Smartphone,
+  Send,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AdminPortalViewProps {
   employees: Employee[];
+  schedules?: WeeklySchedule[];
+  attendanceRecords?: DriverAttendanceRecord[];
+  clientReports?: ClientOrderReport[];
   onAddEmployee: (employee: Employee) => void;
   onUpdateEmployee: (employee: Employee) => void;
+  onWipeDatabase?: () => Promise<void>;
 }
 
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   employees,
+  schedules = [],
+  attendanceRecords = [],
+  clientReports = [],
   onAddEmployee,
   onUpdateEmployee,
+  onWipeDatabase,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('TODOS');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Email Modal State
+  const [emailModalEmployee, setEmailModalEmployee] = useState<Employee | null>(null);
+  const [isNewInviteModal, setIsNewInviteModal] = useState(false);
+
+  // Database Wipe State
+  const [showWipeModal, setShowWipeModal] = useState(false);
+  const [isWiping, setIsWiping] = useState(false);
+  const [wipeSuccessMsg, setWipeSuccessMsg] = useState('');
 
   // Form State for Invitations
   const [nombre, setNombre] = useState('');
@@ -63,17 +95,23 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   });
 
   const handleCopyInviteLink = (emp: Employee) => {
-    const link = `https://sergem.app/invitacion?token=INV-${emp.id}-${Date.now().toString().slice(-6)}`;
-    navigator.clipboard.writeText(link);
+    const jefeAsignado = employees.find((j) => j.id === emp.jefeZonaId);
+    const details = buildEmployeeInvite(emp, jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined);
+    navigator.clipboard.writeText(details.inviteUrl);
     setCopiedId(emp.id);
     setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const handleOpenEmailModal = (emp: Employee) => {
+    setEmailModalEmployee(emp);
+    setIsNewInviteModal(false);
   };
 
   const handleInviteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const newEmp: Employee = {
-      id: `EMP-${(employees.length + 1).toString().padStart(3, '0')}`,
+      id: `EMP-${Date.now().toString().slice(-4)}`,
       cedula,
       nombre,
       apellido,
@@ -92,15 +130,41 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       activo: true,
       rol,
       placaVehiculo: placaVehiculo.toUpperCase() || undefined,
-      jefeZonaId: rol === 'Repartidor' ? jefeZonaId : undefined,
+      jefeZonaId: rol === 'Repartidor' ? (jefeZonaId || undefined) : undefined,
       email,
-      telefono,
+      telefono: telefono || undefined,
       estadoInvitacion: 'Invitado',
     };
 
+    // 1. Save to Firestore
     onAddEmployee(newEmp);
+
+    // 2. Build details and dispatch email invitation via native client automatically
+    const jefeAsignado = employees.find((j) => j.id === newEmp.jefeZonaId);
+    const inviteDetails = buildEmployeeInvite(newEmp, jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined);
+    dispatchNativeEmailInvite(inviteDetails);
+
+    // 3. Open Email Modal with options to send to Gmail, Outlook, or WhatsApp
+    setEmailModalEmployee(newEmp);
+    setIsNewInviteModal(true);
+
     setIsInviteModalOpen(false);
     resetForm();
+  };
+
+  const handleExecuteWipe = async () => {
+    if (!onWipeDatabase) return;
+    try {
+      setIsWiping(true);
+      await onWipeDatabase();
+      setShowWipeModal(false);
+      setWipeSuccessMsg('¡Base de datos limpiada con éxito! Todos los registros han sido vaciados y está lista para datos reales.');
+      setTimeout(() => setWipeSuccessMsg(''), 6000);
+    } catch (err) {
+      console.error('Error al limpiar base de datos:', err);
+    } finally {
+      setIsWiping(false);
+    }
   };
 
   const resetForm = () => {
@@ -118,7 +182,23 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   return (
     <div id="admin-portal-view" className="space-y-6">
-      {/* Header Banner - Light Slate Grey Premium Design */}
+      {/* Success Notification Alert */}
+      {wipeSuccessMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center space-x-2 text-xs font-bold">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{wipeSuccessMsg}</span>
+          </div>
+          <button
+            onClick={() => setWipeSuccessMsg('')}
+            className="text-emerald-700 hover:text-emerald-950 text-xs font-black px-2 py-1 rounded-lg hover:bg-emerald-100 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Header Banner */}
       <div className="relative overflow-hidden bg-gradient-to-b from-slate-100/90 to-slate-200/60 text-slate-900 rounded-2xl p-7 md:p-8 shadow-xs border border-slate-300/80 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="space-y-2 max-w-3xl">
           <div className="inline-flex items-center space-x-2 bg-white border border-slate-300/80 text-red-700 font-extrabold text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-xl shadow-2xs">
@@ -129,11 +209,25 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             Portal de Administración & Invitaciones
           </h2>
           <p className="text-slate-600 text-xs md:text-sm font-medium leading-relaxed">
-            Invita nuevos colaboradores, asigna roles obligatorios (Administrativo, Jefe de Zona, Jefe de Operaciones, Repartidores) y gestiona la estructura de Jefes de Zona de SERGEM S.A.S.
+            Invita nuevos colaboradores, envía invitaciones por correo electrónico oficial, asigna roles obligatorios y gestiona la estructura operativa de SERGEM S.A.S.
           </p>
         </div>
 
-        <div className="shrink-0 pt-2 lg:pt-0">
+        <div className="flex flex-wrap items-center gap-3 shrink-0 pt-2 lg:pt-0">
+          {/* Wipe Database Button */}
+          {onWipeDatabase && (
+            <button
+              id="btn-wipe-database"
+              onClick={() => setShowWipeModal(true)}
+              className="bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-300 font-bold px-4 py-3 rounded-xl shadow-xs flex items-center justify-center space-x-2 transition-all cursor-pointer whitespace-nowrap active:scale-95 text-xs"
+              title="Vaciar todos los registros de la base de datos de Firebase"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              <span>Limpiar Base de Datos</span>
+            </button>
+          )}
+
+          {/* Invite Collaborator Button */}
           <button
             id="btn-invite-employee"
             onClick={() => setIsInviteModalOpen(true)}
@@ -145,7 +239,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
       </div>
 
-      {/* Role Counter Stat Cards - Compact Size */}
+      {/* Operational Attendance & Connectivity Notification Section */}
+      <UnconnectedDriversSection
+        employees={employees}
+        schedules={schedules}
+        attendanceRecords={attendanceRecords}
+        clientReports={clientReports}
+        variant="admin-notification"
+        title="🔔 Notificación Operacional: Repartidores Sin Conectar a su Turno"
+        subtitle="Supervisión de inicio de jornada laboral para el día de hoy. Permite comunicarse de inmediato con el colaborador mediante llamada telefónica o WhatsApp."
+      />
+
+      {/* Role Counter Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           {
@@ -220,34 +325,32 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             placeholder="Buscar colaborador, cédula o placa..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all placeholder:text-slate-400 bg-slate-50/50"
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
-          <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
-            <Filter className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Filtrar Rol:</span>
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-transparent text-xs font-extrabold text-slate-800 focus:outline-hidden cursor-pointer pl-1"
+        <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+          <span className="text-xs font-bold text-slate-500 flex items-center space-x-1">
+            <Filter className="w-3.5 h-3.5" />
+            <span>Rol:</span>
+          </span>
+          {['TODOS', 'Administrativo', 'Jefe de Zona', 'Jefe de Operaciones', 'Repartidor'].map((role) => (
+            <button
+              key={role}
+              onClick={() => setRoleFilter(role)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                roleFilter === role
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
             >
-              <option value="TODOS">Todos los Roles</option>
-              <option value="Administrativo">Administrativo</option>
-              <option value="Jefe de Zona">Jefe de Zona</option>
-              <option value="Jefe de Operaciones">Jefe de Operaciones</option>
-              <option value="Repartidor">Repartidores</option>
-            </select>
-          </div>
-
-          <div className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg whitespace-nowrap">
-            Total: <span className="text-red-700 font-black">{filteredEmployees.length}</span>
-          </div>
+              {role === 'TODOS' ? 'Todos' : role}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Directory Table - Well-Distributed Layout & Spacing */}
+      {/* Directory Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/90 flex justify-between items-center">
           <h3 className="font-extrabold text-sm text-slate-800 flex items-center space-x-2.5">
@@ -262,7 +365,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[850px]">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead className="bg-slate-100/90 text-slate-600 font-extrabold uppercase tracking-wider text-[11px] border-b border-slate-200">
               <tr>
                 <th className="py-3.5 px-5">Colaborador</th>
@@ -270,13 +373,33 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <th className="py-3.5 px-4">Placa Vehículo</th>
                 <th className="py-3.5 px-4">Jefe de Zona</th>
                 <th className="py-3.5 px-4">Contacto</th>
-                <th className="py-3.5 px-4 text-center">Estado</th>
-                <th className="py-3.5 px-5 text-right">Acciones</th>
+                <th className="py-3.5 px-4 text-center">Estado Invitación</th>
+                <th className="py-3.5 px-5 text-right">Acciones de Invitación</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/80 text-xs">
+              {filteredEmployees.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 px-4 text-center">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto border border-red-200">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-bold text-sm text-slate-800">
+                        {employees.length === 0 ? 'Base de datos limpia y lista' : 'No se encontraron colaboradores'}
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        {employees.length === 0
+                          ? 'No hay colaboradores registrados en la base de datos de Firebase. Haz clic en "+ Invitar Nuevo Colaborador" para registrar e invitar por correo a tu primer colaborador real.'
+                          : 'No hay colaboradores que coincidan con la búsqueda o filtro.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {filteredEmployees.map((emp) => {
                 const jefeAsignado = employees.find((j) => j.id === emp.jefeZonaId);
+                const isInvitado = emp.estadoInvitacion === 'Invitado';
 
                 return (
                   <tr key={emp.id} className="hover:bg-slate-50/90 transition-colors">
@@ -347,32 +470,52 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     {/* Contacto */}
                     <td className="py-3.5 px-4">
                       <div className="text-slate-800 text-xs">
-                        <div className="font-semibold text-slate-800 truncate">{emp.email || 'correo@sergemsas.com'}</div>
+                        <div className="font-semibold text-slate-800 truncate">{emp.email || 'Sin correo registrado'}</div>
                         <div className="text-slate-500 text-[11px] font-medium">{emp.telefono || 'Sin teléfono'}</div>
                       </div>
                     </td>
 
-                    {/* Estado */}
+                    {/* Estado Invitación */}
                     <td className="py-3.5 px-4 text-center">
                       <span
                         className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-extrabold border whitespace-nowrap ${
-                          emp.estadoInvitacion === 'Activo' || emp.activo
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-blue-50 text-blue-800 border-blue-200'
+                          isInvitado
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                         }`}
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                        {emp.estadoInvitacion || 'Activo'}
+                        {isInvitado ? (
+                          <>
+                            <Mail className="w-3 h-3 mr-1 text-amber-600" />
+                            <span>Invitado</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                            <span>Activo</span>
+                          </>
+                        )}
                       </span>
                     </td>
 
-                    {/* Acciones */}
+                    {/* Acciones de Invitación */}
                     <td className="py-3.5 px-5 text-right">
                       <div className="flex items-center justify-end space-x-2">
+                        {/* Send / Resend Email Button */}
+                        <button
+                          onClick={() => handleOpenEmailModal(emp)}
+                          title="Enviar o reenviar invitación por correo electrónico"
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-800 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-red-600" />
+                          <span>Enviar Correo</span>
+                        </button>
+
+                        {/* Copy Direct Link */}
                         <button
                           onClick={() => handleCopyInviteLink(emp)}
-                          title="Copiar enlace de invitación"
-                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300/70 text-slate-700 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
+                          title="Copiar enlace directo de invitación"
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300/70 text-slate-700 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
                         >
                           {copiedId === emp.id ? (
                             <>
@@ -396,7 +539,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
       </div>
 
-      {/* Invite Employee Modal */}
+      {/* Invite Employee Modal Form */}
       {isInviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl max-w-xl w-full shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
@@ -407,7 +550,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Invitar Nuevo Colaborador</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">Asignar rol y generar enlace de registro</p>
+                  <p className="text-[11px] text-slate-500 font-medium">Asignar rol y despachar invitación por correo</p>
                 </div>
               </div>
               <button
@@ -458,11 +601,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Correo Electrónico *</label>
+                  <label className="block font-bold text-slate-700 mb-1">Correo Electrónico (para invitación) *</label>
                   <input
                     type="email"
                     required
-                    placeholder="empleado@sergemsas.com"
+                    placeholder="empleado@correo.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
@@ -472,7 +615,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Teléfono / Celular</label>
+                  <label className="block font-bold text-slate-700 mb-1">Teléfono / Celular (WhatsApp)</label>
                   <input
                     type="text"
                     placeholder="315 000 0000"
@@ -521,20 +664,25 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                     <div>
                       <label className="block font-bold text-slate-700 mb-1">
-                        Asignar Jefe de Zona *
+                        Asignar Jefe de Zona
                       </label>
                       <select
-                        required
                         value={jefeZonaId}
                         onChange={(e) => setJefeZonaId(e.target.value)}
                         className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
                       >
-                        <option value="">-- Seleccionar Jefe de Zona --</option>
-                        {jefesDeZona.map((jefe) => (
-                          <option key={jefe.id} value={jefe.id}>
-                            {jefe.nombre} {jefe.apellido} ({jefe.cargo})
-                          </option>
-                        ))}
+                        {jefesDeZona.length === 0 ? (
+                          <option value="">(Sin jefes de zona creados aún - asignar después)</option>
+                        ) : (
+                          <>
+                            <option value="">-- Seleccionar Jefe de Zona --</option>
+                            {jefesDeZona.map((jefe) => (
+                              <option key={jefe.id} value={jefe.id}>
+                                {jefe.nombre} {jefe.apellido} ({jefe.cargo})
+                              </option>
+                            ))}
+                          </>
+                        )}
                       </select>
                     </div>
                   </div>
@@ -563,6 +711,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
               </div>
 
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-950 text-xs flex items-center space-x-2">
+                <Mail className="w-4 h-4 text-red-600 shrink-0" />
+                <span>
+                  Al hacer clic en <strong>"Guardar y Enviar Invitación por Correo"</strong>, se registrará el colaborador en Firebase y se abrirá el despacho del correo oficial con la plantilla lista.
+                </span>
+              </div>
+
               <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
                 <button
                   type="button"
@@ -575,13 +730,81 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   type="submit"
                   className="px-5 py-2.5 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-600/20 flex items-center space-x-2 cursor-pointer active:scale-95 transition-all"
                 >
-                  <Mail className="w-4 h-4" />
-                  <span>Enviar Invitación</span>
+                  <Send className="w-4 h-4" />
+                  <span>Guardar y Enviar Invitación</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Confirmation Modal: Wipe Database */}
+      {showWipeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-rose-200 overflow-hidden p-6 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center border border-rose-200 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">¿Limpiar toda la Base de Datos?</h3>
+                <p className="text-xs text-rose-600 font-bold">Esta acción no se puede deshacer</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Se eliminarán todos los registros de <strong>empleados, programaciones semanales de turnos, novedades operativas y reportes de clientes</strong> de Firebase Firestore, dejando el sistema completamente en blanco y listo para ingresar datos reales.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                disabled={isWiping}
+                onClick={() => setShowWipeModal(false)}
+                className="px-4 py-2 font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isWiping}
+                onClick={handleExecuteWipe}
+                className="px-5 py-2 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-600/20 flex items-center space-x-2 cursor-pointer transition-all disabled:opacity-50"
+              >
+                {isWiping ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Limpiando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Sí, Vaciar Base de Datos</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Invite Modal */}
+      {emailModalEmployee && (
+        <InviteEmailModal
+          employee={emailModalEmployee}
+          jefeZonaName={
+            employees.find((j) => j.id === emailModalEmployee.jefeZonaId)
+              ? `${employees.find((j) => j.id === emailModalEmployee.jefeZonaId)?.nombre} ${employees.find((j) => j.id === emailModalEmployee.jefeZonaId)?.apellido}`
+              : undefined
+          }
+          isOpen={true}
+          onClose={() => {
+            setEmailModalEmployee(null);
+            setIsNewInviteModal(false);
+          }}
+          isNewInvite={isNewInviteModal}
+        />
       )}
     </div>
   );

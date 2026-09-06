@@ -52,14 +52,14 @@ export const Navigation: React.FC<NavigationProps> = ({
       id: 'driver-portal',
       label: 'Portal Repartidor',
       icon: Truck,
-      badge: 'Auditoría',
+      badge: currentRole === 'Repartidor' ? 'Mis Turnos' : 'Supervisión',
       allowedRoles: ['Administrativo', 'Repartidor'],
     },
     {
       id: 'client-report',
-      label: 'Reporte Clientes (42h)',
+      label: 'Portal Clientes & Reportes',
       icon: Building2,
-      badge: 'Operación',
+      badge: 'Clientes & 42h',
       allowedRoles: ['Administrativo', 'Jefe de Zona'],
     },
   ];

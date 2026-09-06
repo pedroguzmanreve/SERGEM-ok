@@ -110,7 +110,9 @@
         "horasTrabajadas": { "type": "number" },
         "horasOrdinarias": { "type": "number" },
         "horasExtrasDiurnas": { "type": "number" },
-        "horasExtrasNocturnas": { "type": "number" }
+        "horasExtrasNocturnas": { "type": "number" },
+        "salidasFueraPerimetro": { "type": "number" },
+        "observacionesSalida": { "type": "string" }
       },
       "required": [
         "id",
@@ -210,6 +212,25 @@
         "createdAt": { "type": "string" }
       },
       "required": ["uid", "email", "role"]
+    },
+    "DriverAttendance": {
+      "title": "DriverAttendance",
+      "description": "Registro de conexión e inicio de turno de repartidores con soporte de foto de auditoría y hora real.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "repartidorId": { "type": "string" },
+        "nombreRepartidor": { "type": "string" },
+        "fecha": { "type": "string" },
+        "diaSemana": { "type": "string" },
+        "horaInicioReal": { "type": "string" },
+        "horaFinReal": { "type": "string" },
+        "estado": { "type": "string" },
+        "clienteNombre": { "type": "string" },
+        "fotoAuditoria": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "repartidorId", "fecha", "estado"]
     }
   },
   "firestore": {
@@ -232,6 +253,10 @@
     "/clientReports/{reportId}": {
       "schema": "ClientOrderReport",
       "description": "Reportes diarios de paquetes y pedidos por cliente."
+    },
+    "/driverAttendance/{attendanceId}": {
+      "schema": "DriverAttendance",
+      "description": "Registros de asistencia y conexión de turnos de repartidores."
     },
     "/periods/{periodId}": {
       "schema": "PayrollPeriod",

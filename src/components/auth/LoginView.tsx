@@ -1,16 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ShieldCheck,
   CalendarDays,
   Truck,
   Lock,
   Mail,
-  User,
   ArrowRight,
-  Sparkles,
   AlertCircle,
   Building2,
-  CheckCircle2
+  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppRole, Employee } from '../../types/payroll';
@@ -23,35 +21,78 @@ export const LoginView: React.FC<LoginViewProps> = ({ employees }) => {
   const {
     loginWithGoogle,
     loginWithEmail,
-    registerWithEmail,
-    quickLoginAsRole,
     loading,
     error,
     clearError
   } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+  // Parse invitation parameters from URL (e.g. from Email, WhatsApp, or copied link)
+  const inviteParams = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const p = new URLSearchParams(window.location.search);
+    const portal = p.get('portal');
+    const role = p.get('role');
+    const email = p.get('invite_email');
+    const empId = p.get('emp_id');
+    const empName = p.get('emp_name');
+    const token = p.get('token');
+
+    if (!portal && !role && !email && !token) return null;
+
+    let appRole: AppRole = 'Repartidor';
+    if (role === 'Administrativo' || portal === 'admin-portal') {
+      appRole = 'Administrativo';
+    } else if (role === 'Jefe de Zona' || role === 'Jefe de Operaciones' || portal === 'zone-chief') {
+      appRole = 'Jefe de Zona';
+    } else {
+      appRole = 'Repartidor';
+    }
+
+    const portalDisplayName =
+      appRole === 'Repartidor'
+        ? 'Portal del Repartidor'
+        : appRole === 'Jefe de Zona'
+        ? 'Portal de Jefatura de Zona'
+        : 'Portal de Administración';
+
+    const portalTab =
+      appRole === 'Repartidor'
+        ? 'driver-portal'
+        : appRole === 'Jefe de Zona'
+        ? 'zone-chief'
+        : 'admin-portal';
+
+    return {
+      portal: portal || portalTab,
+      role: role || appRole,
+      appRole,
+      email: email || '',
+      empId: empId || '',
+      empName: empName || '',
+      token: token || '',
+      portalDisplayName,
+    };
+  }, []);
+
+  // Match with existing employee if possible
+  const matchedInvitedEmployee = useMemo(() => {
+    if (!inviteParams) return undefined;
+    return employees.find(
+      (e) =>
+        (inviteParams.empId && e.id === inviteParams.empId) ||
+        (inviteParams.email && e.email?.toLowerCase() === inviteParams.email.toLowerCase())
+    );
+  }, [employees, inviteParams]);
+
+  const [email, setEmail] = useState(() => inviteParams?.email || '');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [selectedRole, setSelectedRole] = useState<AppRole>('Administrativo');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    if (mode === 'login') {
-      if (!email || !password) return;
-      await loginWithEmail(email, password);
-    } else {
-      if (!email || !password || !displayName) return;
-      await registerWithEmail(email, password, displayName, selectedRole);
-    }
+    if (!email || !password) return;
+    await loginWithEmail(email, password);
   };
-
-  // Find sample employees for role demonstration
-  const sampleAdmin = employees.find((e) => e.rol === 'Administrativo');
-  const sampleZoneChief = employees.find((e) => e.rol === 'Jefe de Zona' || e.rol === 'Jefe de Operaciones');
-  const sampleDriver = employees.find((e) => e.rol === 'Repartidor');
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -83,6 +124,57 @@ export const LoginView: React.FC<LoginViewProps> = ({ employees }) => {
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl relative z-10 px-4 sm:px-0">
         <div className="bg-slate-800/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl p-6 sm:p-8">
           
+          {/* SPECIAL INVITATION BANNER (Shown when opened via Email, WhatsApp, or Copied Link) */}
+          {inviteParams && (
+            <div className="mb-6 p-4 rounded-xl bg-gradient-to-br from-blue-900/40 via-indigo-900/30 to-slate-900 border border-blue-500/40 shadow-lg">
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
+                  inviteParams.appRole === 'Repartidor'
+                    ? 'bg-blue-600 text-white'
+                    : inviteParams.appRole === 'Jefe de Zona'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-red-600 text-white'
+                }`}>
+                  {inviteParams.appRole === 'Repartidor' ? (
+                    <Truck className="w-5 h-5" />
+                  ) : inviteParams.appRole === 'Jefe de Zona' ? (
+                    <CalendarDays className="w-5 h-5" />
+                  ) : (
+                    <ShieldCheck className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      Invitación Oficial
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                      inviteParams.appRole === 'Repartidor'
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                        : inviteParams.appRole === 'Jefe de Zona'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        : 'bg-red-500/20 text-red-300 border border-red-500/40'
+                    }`}>
+                      Rol: {inviteParams.role}
+                    </span>
+                  </div>
+                  <h3 className="text-white font-bold text-sm mt-1">
+                    {inviteParams.empName || matchedInvitedEmployee?.nombre
+                      ? `¡Hola, ${inviteParams.empName || `${matchedInvitedEmployee?.nombre} ${matchedInvitedEmployee?.apellido}`}!`
+                      : '¡Te damos la bienvenida a SERGEM S.A.S.!'}
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Has sido invitado(a) para ingresar a tu{' '}
+                    <strong className="text-white underline decoration-blue-400">
+                      {inviteParams.portalDisplayName}
+                    </strong>
+                    . Por favor inicia sesión con tu cuenta de Google o con tu correo y contraseña asignados.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Banner */}
           {error && (
             <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3 text-red-300 text-xs sm:text-sm">
@@ -93,38 +185,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ employees }) => {
               </div>
             </div>
           )}
-
-          {/* Mode Switcher */}
-          <div className="flex p-1 bg-slate-900/80 rounded-xl mb-6 border border-slate-700/50">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('login');
-                clearError();
-              }}
-              className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
-                mode === 'login'
-                  ? 'bg-red-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Iniciar Sesión
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('register');
-                clearError();
-              }}
-              className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
-                mode === 'register'
-                  ? 'bg-red-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Registrar Usuario
-            </button>
-          </div>
 
           {/* Google Sign In Button */}
           <button
@@ -167,25 +227,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ employees }) => {
 
           {/* Email / Password Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Nombre Completo
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="text"
-                    required
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Ej. Pedro Guzmán"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  />
-                </div>
-              </div>
-            )}
-
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                 Correo Electrónico
@@ -215,110 +256,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ employees }) => {
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Tu contraseña de acceso"
                   className="w-full pl-10 pr-3.5 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
             </div>
-
-            {mode === 'register' && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Rol en SERGEM S.A.S.
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {[
-                    { id: 'Administrativo', label: 'Administrador', icon: ShieldCheck },
-                    { id: 'Jefe de Zona', label: 'Jefe de Zona', icon: CalendarDays },
-                    { id: 'Repartidor', label: 'Repartidor', icon: Truck },
-                  ].map((r) => {
-                    const Icon = r.icon;
-                    const isSel = selectedRole === r.id;
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setSelectedRole(r.id as AppRole)}
-                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                          isSel
-                            ? 'bg-red-600/20 border-red-500 text-white font-bold'
-                            : 'bg-slate-900/50 border-slate-700 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <Icon className={`w-5 h-5 mb-1 ${isSel ? 'text-red-400' : 'text-slate-500'}`} />
-                        <span className="text-xs">{r.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             <button
               type="submit"
               disabled={loading}
               className="w-full mt-2 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              <span>{mode === 'login' ? 'Entrar a la Plataforma' : 'Crear Cuenta y Entrar'}</span>
+              <span>Entrar a la Plataforma</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Access Demo by Role */}
-          <div className="mt-8 pt-6 border-t border-slate-700/80">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                Acceso Rápido por Rol (Entrada Inmediata)
-              </span>
-              <span className="text-[11px] text-slate-400 font-medium">Demostración & Pruebas</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                onClick={() => quickLoginAsRole('Administrativo', sampleAdmin)}
-                className="group p-3 rounded-xl bg-slate-900/80 hover:bg-slate-900 border border-slate-700/80 hover:border-red-500/60 transition-all text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center group-hover:bg-red-500 group-hover:text-white transition-colors">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-white">Administrador</span>
-                </div>
-                <p className="text-[11px] text-slate-400 line-clamp-1">Nómina, Legal & Personal</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickLoginAsRole('Jefe de Zona', sampleZoneChief)}
-                className="group p-3 rounded-xl bg-slate-900/80 hover:bg-slate-900 border border-slate-700/80 hover:border-amber-500/60 transition-all text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors">
-                    <CalendarDays className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-white">Jefe de Zona</span>
-                </div>
-                <p className="text-[11px] text-slate-400 line-clamp-1">Turnos, Novedades & Rutas</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => quickLoginAsRole('Repartidor', sampleDriver)}
-                className="group p-3 rounded-xl bg-slate-900/80 hover:bg-slate-900 border border-slate-700/80 hover:border-blue-500/60 transition-all text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                    <Truck className="w-4 h-4" />
-                  </div>
-                  <span className="text-xs font-bold text-white">Repartidor</span>
-                </div>
-                <p className="text-[11px] text-slate-400 line-clamp-1">Desprendibles & Mis Turnos</p>
-              </button>
-            </div>
-          </div>
-
         </div>
 
         {/* Footer info */}
@@ -334,3 +286,4 @@ export const LoginView: React.FC<LoginViewProps> = ({ employees }) => {
     </div>
   );
 };
+

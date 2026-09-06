@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { CompanySettings, Department, PayrollCalculationItem, PayrollPeriod } from '../types/payroll';
 import { formatCurrency } from '../utils/payrollCalculator';
-import { exportPayrollToCSV } from '../utils/exporters';
-import { Search, Download, Edit3, ChevronDown, ChevronRight, FileText, Printer, SlidersHorizontal } from 'lucide-react';
+import { exportPayrollToCSV, exportPayrollToExcel } from '../utils/exporters';
+import { Search, Download, Edit3, ChevronDown, ChevronRight, FileText, Printer, SlidersHorizontal, FileSpreadsheet } from 'lucide-react';
 
 interface PayrollReportTableProps {
   items: PayrollCalculationItem[];
@@ -97,18 +97,28 @@ export const PayrollReportTable: React.FC<PayrollReportTableProps> = ({
         {/* Action Buttons */}
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => exportPayrollToCSV(filteredItems, period, company)}
+            onClick={() => exportPayrollToExcel(filteredItems, period, company)}
             className="inline-flex items-center px-3.5 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition cursor-pointer"
+            title="Descargar reporte en formato nativo Excel (.XLSX)"
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Exportar Excel/CSV
+            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
+            Excel (.XLSX)
+          </button>
+
+          <button
+            onClick={() => exportPayrollToCSV(filteredItems, period, company)}
+            className="inline-flex items-center px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition cursor-pointer"
+            title="Descargar reporte en formato CSV estructurado UTF-8"
+          >
+            <Download className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
+            CSV
           </button>
           
           <button
             onClick={handlePrint}
-            className="inline-flex items-center px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition cursor-pointer"
+            className="inline-flex items-center px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition cursor-pointer"
           >
-            <Printer className="w-3.5 h-3.5 mr-1.5" />
+            <Printer className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
             Imprimir
           </button>
         </div>

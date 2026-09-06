@@ -26,6 +26,9 @@ service cloud.firestore {
     match /periodNovedades/{periodId} {
       allow read, write: if true;
     }
+    match /clients/{clientId} {
+      allow read, write: if true;
+    }
     match /{document=**} {
       allow read, write: if true;
     }

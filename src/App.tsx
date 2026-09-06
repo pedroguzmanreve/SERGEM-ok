@@ -7,16 +7,14 @@ import {
   PayrollPeriod,
   WeeklySchedule,
   ZoneChiefNovedad,
-  ClientOrderReport
+  ClientOrderReport,
+  DriverAttendanceRecord,
+  CompanyClient,
+  AppRole
 } from './types/payroll';
 import {
   defaultCompanySettings,
-  defaultNovedades,
-  initialEmployees,
-  initialPeriods,
-  initialSchedules,
-  initialZoneNovedades,
-  initialClientReports
+  defaultNovedades
 } from './data/initialData';
 import {
   subscribeEmployees,
@@ -25,6 +23,8 @@ import {
   subscribeClientReports,
   subscribePeriods,
   subscribeCompanySettings,
+  subscribeDriverAttendance,
+  subscribeClients,
   saveEmployeeToFirestore,
   saveScheduleToFirestore,
   saveZoneNovedadToFirestore,
@@ -32,7 +32,11 @@ import {
   savePeriodToFirestore,
   saveCompanySettingsToFirestore,
   savePeriodNovedadesToFirestore,
-  seedInitialDatabase
+  saveDriverAttendanceToFirestore,
+  saveClientToFirestore,
+  deleteClientFromFirestore,
+  seedInitialDatabase,
+  clearAllFirestoreCollections
 } from './services/firestoreService';
 import { calculatePayrollItem } from './utils/payrollCalculator';
 import { Header } from './components/Header';
@@ -47,21 +51,31 @@ import { ClientReportsView } from './components/ClientReportsView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginView } from './components/auth/LoginView';
 
+const defaultPeriodFallback: PayrollPeriod = {
+  id: '',
+  nombrePeriodo: 'Sin periodo activo',
+  fechaInicio: '',
+  fechaFin: '',
+  tipoPeriodo: 'Quincenal',
+  diasBasePeriodo: 15,
+  estado: 'Borrador',
+  fechaLiquidacion: '',
+};
+
 export default function App() {
-  // Global Application State
+  // Global Application State (Clean Database ready for real data)
   const [company, setCompany] = useState<CompanySettings>(defaultCompanySettings);
-  const [periods, setPeriods] = useState<PayrollPeriod[]>(initialPeriods);
-  const [activePeriodId, setActivePeriodId] = useState<string>(initialPeriods[0].id);
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [novedadesMap, setNovedadesMap] = useState<Record<string, EmployeeNovedades>>(defaultNovedades);
+  const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
+  const [activePeriodId, setActivePeriodId] = useState<string>('');
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [novedadesMap, setNovedadesMap] = useState<Record<string, EmployeeNovedades>>({});
 
-  // States for requested modules
-  const [schedules, setSchedules] = useState<WeeklySchedule[]>(initialSchedules);
-  const [zoneNovedades, setZoneNovedades] = useState<ZoneChiefNovedad[]>(initialZoneNovedades);
-  const [clientReports, setClientReports] = useState<ClientOrderReport[]>(initialClientReports);
-
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<TabType>('admin-portal');
+  // States for requested modules (Initialized empty for real data entry)
+  const [schedules, setSchedules] = useState<WeeklySchedule[]>([]);
+  const [zoneNovedades, setZoneNovedades] = useState<ZoneChiefNovedad[]>([]);
+  const [clientReports, setClientReports] = useState<ClientOrderReport[]>([]);
+  const [driverAttendance, setDriverAttendance] = useState<DriverAttendanceRecord[]>([]);
+  const [clients, setClients] = useState<CompanyClient[]>([]);
 
   // Firebase status
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
@@ -72,54 +86,57 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNewPeriodOpen, setIsNewPeriodOpen] = useState(false);
 
-  // Firebase subscriptions & initial seeding
+  // Real-time Firestore Subscriptions (Live connection without auto-seeding mock data)
   useEffect(() => {
     let isMounted = true;
 
-    // Seed database if empty with default SERGEM S.A.S. data
-    seedInitialDatabase({
-      employees: initialEmployees,
-      schedules: initialSchedules,
-      zoneNovedades: initialZoneNovedades,
-      clientReports: initialClientReports,
-      periods: initialPeriods,
-      company: defaultCompanySettings,
-      novedadesMap: defaultNovedades,
-    })
-      .then(() => {
-        if (isMounted) setIsFirebaseConnected(true);
-      })
-      .catch((err) => {
-        console.warn('Firestore initial check/seed:', err);
-      });
-
-    // Real-time Firestore Subscriptions
     const unsubEmp = subscribeEmployees(
       (data) => {
-        if (data.length > 0) setEmployees(data);
-        setIsFirebaseConnected(true);
+        if (isMounted) {
+          setEmployees(data || []);
+          setIsFirebaseConnected(true);
+        }
       },
-      () => setIsFirebaseConnected(false)
+      () => {
+        if (isMounted) setIsFirebaseConnected(false);
+      }
     );
 
     const unsubSched = subscribeSchedules((data) => {
-      if (data.length > 0) setSchedules(data);
+      if (isMounted) setSchedules(data || []);
     });
 
     const unsubNov = subscribeZoneNovedades((data) => {
-      if (data.length > 0) setZoneNovedades(data);
+      if (isMounted) setZoneNovedades(data || []);
     });
 
     const unsubRep = subscribeClientReports((data) => {
-      if (data.length > 0) setClientReports(data);
+      if (isMounted) setClientReports(data || []);
     });
 
     const unsubPeriods = subscribePeriods((data) => {
-      if (data.length > 0) setPeriods(data);
+      if (isMounted) {
+        setPeriods(data || []);
+        if (data && data.length > 0) {
+          setActivePeriodId((prev) => (prev && data.some((p) => p.id === prev) ? prev : data[0].id));
+        } else {
+          setActivePeriodId('');
+        }
+      }
     });
 
     const unsubCompany = subscribeCompanySettings((data) => {
-      if (data) setCompany(data);
+      if (isMounted && data) setCompany(data);
+    });
+
+    const unsubAttendance = subscribeDriverAttendance((data) => {
+      if (isMounted) setDriverAttendance(data || []);
+    });
+
+    const unsubClients = subscribeClients((data) => {
+      if (isMounted) {
+        setClients(data || []);
+      }
     });
 
     return () => {
@@ -130,12 +147,14 @@ export default function App() {
       unsubRep();
       unsubPeriods();
       unsubCompany();
+      unsubAttendance();
+      unsubClients();
     };
   }, []);
 
   // Active Period Object
-  const activePeriod = useMemo(() => {
-    return periods.find((p) => p.id === activePeriodId) || periods[0];
+  const activePeriod = useMemo<PayrollPeriod>(() => {
+    return periods.find((p) => p.id === activePeriodId) || periods[0] || defaultPeriodFallback;
   }, [periods, activePeriodId]);
 
   // Recalculate Payroll for all active employees whenever state changes
@@ -285,6 +304,26 @@ export default function App() {
     setClientReports((prev) => prev.filter((r) => r.id !== repId));
   };
 
+  const handleRecordAttendance = async (record: DriverAttendanceRecord) => {
+    setDriverAttendance((prev) => {
+      const idx = prev.findIndex((a) => a.id === record.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = record;
+        return copy;
+      }
+      return [record, ...prev];
+    });
+    try {
+      setIsSyncing(true);
+      await saveDriverAttendanceToFirestore(record);
+    } catch (e) {
+      console.warn('Error saving attendance record to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleSaveCompanySettings = async (newSettings: CompanySettings) => {
     setCompany(newSettings);
     try {
@@ -292,6 +331,57 @@ export default function App() {
       await saveCompanySettingsToFirestore(newSettings);
     } catch (e) {
       console.warn('Error saving company settings to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSaveClient = async (client: CompanyClient) => {
+    setIsSyncing(true);
+    try {
+      await saveClientToFirestore(client);
+      setClients((prev) => {
+        const idx = prev.findIndex((c) => c.id === client.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = client;
+          return copy;
+        }
+        return [client, ...prev];
+      });
+    } catch (e) {
+      console.warn('Error saving client to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    setIsSyncing(true);
+    try {
+      await deleteClientFromFirestore(clientId);
+      setClients((prev) => prev.filter((c) => c.id !== clientId));
+    } catch (e) {
+      console.warn('Error deleting client from Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleWipeEntireDatabase = async () => {
+    try {
+      setIsSyncing(true);
+      await clearAllFirestoreCollections();
+      setEmployees([]);
+      setSchedules([]);
+      setZoneNovedades([]);
+      setClientReports([]);
+      setDriverAttendance([]);
+      setClients([]);
+      setNovedadesMap({});
+    } catch (e) {
+      console.warn('Error clearing entire database:', e);
+      throw e;
     } finally {
       setIsSyncing(false);
     }
@@ -308,6 +398,9 @@ export default function App() {
         schedules={schedules}
         zoneNovedades={zoneNovedades}
         clientReports={clientReports}
+        driverAttendance={driverAttendance}
+        clients={clients}
+        handleRecordAttendance={handleRecordAttendance}
         isFirebaseConnected={isFirebaseConnected}
         isSyncing={isSyncing}
         editingNovedadesItem={editingNovedadesItem}
@@ -324,9 +417,12 @@ export default function App() {
         handleDeleteZoneNovedad={handleDeleteZoneNovedad}
         handleAddClientReport={handleAddClientReport}
         handleDeleteClientReport={handleDeleteClientReport}
+        handleSaveClient={handleSaveClient}
+        handleDeleteClient={handleDeleteClient}
         handleSaveCompanySettings={handleSaveCompanySettings}
         handleAddPeriod={handleAddPeriod}
         handleSaveNovedades={handleSaveNovedades}
+        handleWipeEntireDatabase={handleWipeEntireDatabase}
       />
     </AuthProvider>
   );
@@ -341,6 +437,9 @@ interface AppContentProps {
   schedules: WeeklySchedule[];
   zoneNovedades: ZoneChiefNovedad[];
   clientReports: ClientOrderReport[];
+  driverAttendance: DriverAttendanceRecord[];
+  clients: CompanyClient[];
+  handleRecordAttendance: (record: DriverAttendanceRecord) => void;
   isFirebaseConnected: boolean;
   isSyncing: boolean;
   editingNovedadesItem: PayrollCalculationItem | null;
@@ -357,9 +456,12 @@ interface AppContentProps {
   handleDeleteZoneNovedad: (id: string) => void;
   handleAddClientReport: (rep: ClientOrderReport) => void;
   handleDeleteClientReport: (id: string) => void;
+  handleSaveClient: (client: CompanyClient) => Promise<void>;
+  handleDeleteClient: (clientId: string) => Promise<void>;
   handleSaveCompanySettings: (settings: CompanySettings) => void;
   handleAddPeriod: (period: PayrollPeriod) => void;
   handleSaveNovedades: (empId: string, novs: EmployeeNovedades) => void;
+  handleWipeEntireDatabase: () => Promise<void>;
 }
 
 function AppContent({
@@ -371,6 +473,9 @@ function AppContent({
   schedules,
   zoneNovedades,
   clientReports,
+  driverAttendance,
+  clients,
+  handleRecordAttendance,
   isFirebaseConnected,
   isSyncing,
   editingNovedadesItem,
@@ -387,29 +492,92 @@ function AppContent({
   handleDeleteZoneNovedad,
   handleAddClientReport,
   handleDeleteClientReport,
+  handleSaveClient,
+  handleDeleteClient,
   handleSaveCompanySettings,
   handleAddPeriod,
   handleSaveNovedades,
+  handleWipeEntireDatabase,
 }: AppContentProps) {
   const { currentUser, userProfile, currentRole, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('admin-portal');
+  
+  // Detect invitation parameters from URL (e.g. sent via Email, WhatsApp, or copied link)
+  const inviteParams = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const portal = params.get('portal');
+    const role = params.get('role');
+    const email = params.get('invite_email');
+    const empId = params.get('emp_id');
+    const empName = params.get('emp_name');
+    const token = params.get('token');
+
+    if (!portal && !role && !email && !empId && !token) return null;
+
+    let targetPortal: TabType = 'admin-portal';
+    let targetRole: AppRole = 'Administrativo';
+
+    if (portal === 'driver-portal' || role === 'Repartidor') {
+      targetPortal = 'driver-portal';
+      targetRole = 'Repartidor';
+    } else if (portal === 'zone-chief' || role === 'Jefe de Zona' || role === 'Jefe de Operaciones') {
+      targetPortal = 'zone-chief';
+      targetRole = 'Jefe de Zona';
+    } else if (portal === 'client-report') {
+      targetPortal = 'client-report';
+      targetRole = 'Administrativo';
+    } else {
+      targetPortal = 'admin-portal';
+      targetRole = 'Administrativo';
+    }
+
+    const portalDisplayName =
+      targetPortal === 'driver-portal'
+        ? 'Portal del Repartidor'
+        : targetPortal === 'zone-chief'
+        ? 'Portal de Jefe de Zona'
+        : targetPortal === 'client-report'
+        ? 'Reporte Clientes'
+        : 'Portal de Administración';
+
+    return {
+      portal: targetPortal,
+      role: role || targetRole,
+      targetRole,
+      email: email || '',
+      empId: empId || '',
+      empName: empName || '',
+      token: token || '',
+      portalDisplayName,
+    };
+  }, []);
+
+  // Set initial tab strictly based on URL invitation parameter first, then assigned role
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (inviteParams?.portal) return inviteParams.portal;
+    if (currentRole === 'Repartidor') return 'driver-portal';
+    if (currentRole === 'Jefe de Zona') return 'zone-chief';
+    return 'admin-portal';
+  });
 
   const activePeriod = useMemo(() => {
     return periods.find((p) => p.id === activePeriodId) || periods[0];
   }, [periods, activePeriodId]);
 
-  // Adjust active tab when user role changes
+  // Adjust active tab immediately when user role changes or when URL invitation link is detected
   useEffect(() => {
-    if (currentRole === 'Jefe de Zona') {
-      if (activeTab === 'admin-portal' || activeTab === 'driver-portal') {
-        setActiveTab('zone-chief');
-      }
-    } else if (currentRole === 'Repartidor') {
-      if (activeTab === 'admin-portal' || activeTab === 'zone-chief' || activeTab === 'client-report') {
-        setActiveTab('driver-portal');
-      }
+    if (inviteParams?.portal) {
+      setActiveTab(inviteParams.portal);
+      return;
     }
-  }, [currentRole]);
+    if (currentRole === 'Repartidor') {
+      setActiveTab('driver-portal');
+    } else if (currentRole === 'Jefe de Zona') {
+      setActiveTab('zone-chief');
+    } else if (currentRole === 'Administrativo') {
+      setActiveTab((prev) => prev || 'admin-portal');
+    }
+  }, [currentRole, inviteParams]);
 
   // Loading state
   if (loading) {
@@ -437,11 +605,16 @@ function AppContent({
         company={company}
         activePeriod={activePeriod}
         periods={periods}
+        employees={employees}
+        schedules={schedules}
+        attendanceRecords={driverAttendance}
+        clientReports={clientReports}
         firebaseConnected={isFirebaseConnected}
         isSyncing={isSyncing}
         onSelectPeriod={setActivePeriodId}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onNewPeriod={() => setIsNewPeriodOpen(true)}
+        onNavigateToPortal={(portal) => setActiveTab(portal)}
       />
 
       {/* App Navigation with role-filtered tabs */}
@@ -455,25 +628,57 @@ function AppContent({
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
+        {/* Special Invitation Context Banner */}
+        {inviteParams && (
+          <div className="mb-5 p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-slate-50 border border-blue-200/90 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center space-x-3 text-xs sm:text-sm text-slate-800">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
+              <div>
+                <p className="font-bold text-slate-900">
+                  Acceso mediante enlace de invitación: Rol {inviteParams.role}
+                </p>
+                <p className="text-slate-600 text-xs mt-0.5">
+                  Redirigido directamente al <strong className="text-blue-700">{inviteParams.portalDisplayName}</strong>
+                  {inviteParams.empName ? ` asignado a ${inviteParams.empName}` : ''}.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-xs">
+                {inviteParams.portalDisplayName}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Modulo 1: Portal Administración */}
         {activeTab === 'admin-portal' && currentRole === 'Administrativo' && (
           <AdminPortalView
             employees={employees}
+            schedules={schedules}
+            attendanceRecords={driverAttendance}
+            clientReports={clientReports}
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
+            onWipeDatabase={handleWipeEntireDatabase}
           />
         )}
 
         {/* Modulo 2: Portal Jefe de Zona */}
-        {activeTab === 'zone-chief' && (currentRole === 'Administrativo' || currentRole === 'Jefe de Zona') && (
+        {activeTab === 'zone-chief' && (currentRole === 'Administrativo' || currentRole === 'Jefe de Zona' || inviteParams?.targetRole === 'Jefe de Zona') && (
           <ZoneChiefPortalView
             employees={employees}
             schedules={schedules}
             novedades={zoneNovedades}
+            attendanceRecords={driverAttendance}
+            clientReports={clientReports}
             onSaveSchedule={handleSaveSchedule}
             onDeleteSchedule={handleDeleteSchedule}
             onAddNovedad={handleAddZoneNovedad}
             onDeleteNovedad={handleDeleteZoneNovedad}
+            onRecordAttendance={handleRecordAttendance}
+            currentRole={inviteParams?.targetRole === 'Jefe de Zona' ? 'Jefe de Zona' : currentRole}
+            userProfile={userProfile}
           />
         )}
 
@@ -483,18 +688,25 @@ function AppContent({
             employees={employees}
             schedules={schedules}
             clientReports={clientReports}
+            attendanceRecords={driverAttendance}
             onAddClientReport={handleAddClientReport}
-            defaultDriverId={userProfile?.employeeId}
+            onRecordAttendance={handleRecordAttendance}
+            defaultDriverId={inviteParams?.empId || userProfile?.employeeId}
+            currentRole={inviteParams?.targetRole === 'Repartidor' ? 'Repartidor' : currentRole}
+            userProfile={userProfile}
           />
         )}
 
-        {/* Modulo 3: Reporte Clientes */}
+        {/* Modulo 3: Portal Clientes & Reportes */}
         {activeTab === 'client-report' && (currentRole === 'Administrativo' || currentRole === 'Jefe de Zona') && (
           <ClientReportsView
             clientReports={clientReports}
             employees={employees}
             schedules={schedules}
             company={company}
+            clients={clients}
+            onSaveClient={handleSaveClient}
+            onDeleteClient={handleDeleteClient}
             onAddClientReport={handleAddClientReport}
             onDeleteClientReport={handleDeleteClientReport}
           />

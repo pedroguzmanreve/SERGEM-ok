@@ -115,6 +115,23 @@ export interface ClientOrderReport {
   horasExtrasDiurnas: number;
   horasExtrasNocturnas: number;
   horasFestivas: number;
+  salidasFueraPerimetro?: number;
+  observacionesSalida?: string;
+}
+
+export interface CompanyClient {
+  id: string;
+  nombre: string;
+  nit?: string;
+  ciudad?: string;
+  direccion?: string;
+  contactoNombre?: string;
+  contactoTelefono?: string;
+  contactoEmail?: string;
+  tarifaHoraBase?: number;
+  observaciones?: string;
+  activo: boolean;
+  fechaCreacion: string;
 }
 
 export interface HoursNovedades {
@@ -237,3 +254,36 @@ export interface PayrollPeriod {
   estado: 'Borrador' | 'Liquidata' | 'Aprobada' | 'Pagada';
   fechaLiquidacion: string;
 }
+
+export interface DriverAttendanceRecord {
+  id: string; // `${repartidorId}_${fecha}`
+  repartidorId: string;
+  nombreRepartidor: string;
+  fecha: string; // YYYY-MM-DD
+  diaSemana: string; // e.g. 'Viernes'
+  horaInicioReal: string; // e.g. '07:05'
+  horaFinReal?: string;
+  estado: 'CONECTADO' | 'FINALIZADO';
+  clienteNombre?: string;
+  fotoAuditoria?: string;
+  timestamp: string;
+}
+
+export interface DriverShiftAttendanceStatus {
+  employee: Employee;
+  scheduledShift: ShiftDetails;
+  scheduledStartTime: string;
+  scheduledEndTime?: string;
+  clienteNombre: string;
+  diaSemana: string;
+  fecha: string;
+  isConnected: boolean;
+  attendanceRecord?: DriverAttendanceRecord;
+  hasClientReport: boolean;
+  isOverdue: boolean;
+  delayMinutes: number;
+  delayFormatted: string;
+  callUrl: string;
+  whatsappUrl: string;
+}
+

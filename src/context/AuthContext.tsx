@@ -34,8 +34,11 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Admin email configured for runtime
-const ADMIN_EMAILS = ['pedroguzman@revesolution.net'];
+// Admin emails configured for SERGEM system administration
+const ADMIN_EMAILS = [
+  'pedroguzman@revesolution.net',
+  'pedguzman@gmail.com',
+];
 
 export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[] }> = ({
   children,
@@ -64,27 +67,68 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
           const existingProfile = await getUserProfileFromFirestore(fbUser.uid);
 
           if (existingProfile) {
-            setUserProfile(existingProfile);
+            // Check if user accessed via an invitation link that specifies a role or employee
+            let effectiveProfile = existingProfile;
+            if (typeof window !== 'undefined') {
+              const urlParams = new URLSearchParams(window.location.search);
+              const urlRole = urlParams.get('role');
+              const urlPortal = urlParams.get('portal');
+              const urlEmpId = urlParams.get('emp_id');
+
+              let invitedRole: AppRole | null = null;
+              if (urlRole === 'Administrativo' || urlPortal === 'admin-portal') invitedRole = 'Administrativo';
+              else if (urlRole === 'Jefe de Zona' || urlRole === 'Jefe de Operaciones' || urlPortal === 'zone-chief') invitedRole = 'Jefe de Zona';
+              else if (urlRole === 'Repartidor' || urlPortal === 'driver-portal') invitedRole = 'Repartidor';
+
+              if (invitedRole && existingProfile.role !== invitedRole) {
+                effectiveProfile = {
+                  ...existingProfile,
+                  role: invitedRole,
+                  ...(urlEmpId ? { employeeId: urlEmpId } : {}),
+                };
+                try {
+                  await saveUserProfileToFirestore(effectiveProfile);
+                } catch (e) {
+                  console.warn('Could not update profile with invite role:', e);
+                }
+              }
+            }
+            setUserProfile(effectiveProfile);
           } else {
             // Determine initial role
             const email = fbUser.email?.toLowerCase() || '';
-            const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email);
+            const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email) || email.startsWith('pedguzman') || email.startsWith('pedroguzman');
 
-            // Check if matches an existing employee
+            // Check URL parameters for explicit invitation role
+            let urlRole: AppRole | null = null;
+            let urlEmpId: string | null = null;
+            if (typeof window !== 'undefined') {
+              const urlParams = new URLSearchParams(window.location.search);
+              const r = urlParams.get('role');
+              const p = urlParams.get('portal');
+              urlEmpId = urlParams.get('emp_id');
+              if (r === 'Administrativo' || p === 'admin-portal') urlRole = 'Administrativo';
+              else if (r === 'Jefe de Zona' || r === 'Jefe de Operaciones' || p === 'zone-chief') urlRole = 'Jefe de Zona';
+              else if (r === 'Repartidor' || p === 'driver-portal') urlRole = 'Repartidor';
+            }
+
+            // Check if matches an existing employee or invite emp_id
             const matchedEmp = employees.find(
-              (e) => e.email?.toLowerCase() === email
+              (e) => (urlEmpId && e.id === urlEmpId) || (e.email?.toLowerCase() === email)
             );
 
-            let initialRole: AppRole = 'Repartidor';
-            if (isAdminEmail) {
-              initialRole = 'Administrativo';
-            } else if (matchedEmp) {
-              if (matchedEmp.rol === 'Jefe de Zona' || matchedEmp.rol === 'Jefe de Operaciones') {
-                initialRole = 'Jefe de Zona';
-              } else if (matchedEmp.rol === 'Administrativo') {
+            let initialRole: AppRole = urlRole || 'Repartidor';
+            if (!urlRole) {
+              if (isAdminEmail) {
                 initialRole = 'Administrativo';
-              } else {
-                initialRole = 'Repartidor';
+              } else if (matchedEmp) {
+                if (matchedEmp.rol === 'Jefe de Zona' || matchedEmp.rol === 'Jefe de Operaciones') {
+                  initialRole = 'Jefe de Zona';
+                } else if (matchedEmp.rol === 'Administrativo') {
+                  initialRole = 'Administrativo';
+                } else {
+                  initialRole = 'Repartidor';
+                }
               }
             }
 
@@ -93,10 +137,12 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
               email: fbUser.email || '',
               displayName: fbUser.displayName || email.split('@')[0] || 'Usuario SERGEM',
               role: initialRole,
-              employeeId: matchedEmp?.id,
-              photoURL: fbUser.photoURL || undefined,
               createdAt: new Date().toISOString(),
               lastLogin: new Date().toISOString(),
+              ...(matchedEmp?.id ? { employeeId: matchedEmp.id } : {}),
+              ...(fbUser.photoURL ? { photoURL: fbUser.photoURL } : {}),
+              ...(matchedEmp?.cedula ? { cedula: matchedEmp.cedula } : {}),
+              ...(matchedEmp?.telefono ? { telefono: matchedEmp.telefono } : {}),
             };
 
             await saveUserProfileToFirestore(newProfile);
@@ -136,7 +182,7 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
       console.error('Error signing in with Google:', err);
       // Friendly message for popup blockers / iframe constraints
       if (err.code === 'auth/popup-blocked') {
-        setError('El navegador bloqueó la ventana emergente de Google. Por favor habilita los popups o usa el acceso rápido por rol.');
+        setError('El navegador bloqueó la ventana emergente de Google. Por favor habilita las ventanas emergentes o inicia sesión con correo y contraseña.');
       } else if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
         setError('Inicio de sesión cancelado.');
       } else {
@@ -187,7 +233,7 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
     } catch (err: any) {
       console.error('Error creating user with email:', err);
       if (err.code === 'auth/operation-not-allowed') {
-        setError('El proveedor Correo/Contraseña (Email/Password) aún no está habilitado en Firebase Console > Authentication > Sign-in method. Puedes ingresar con Google o usar el Acceso Rápido por Rol mientras lo habilitas.');
+        setError('El proveedor Correo/Contraseña (Email/Password) debe estar habilitado en Firebase Console > Authentication > Sign-in method. También puedes ingresar con Google.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('Este correo ya se encuentra registrado. Inicia sesión directamente.');
       } else if (err.code === 'auth/weak-password') {
@@ -231,8 +277,8 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
       email: employee?.email || (role === 'Administrativo' ? 'pedroguzman@revesolution.net' : `${role.toLowerCase().replace(/\s+/g, '')}@sergem.com.co`),
       displayName: employee ? `${employee.nombre} ${employee.apellido}` : defaultNames[role],
       role: role,
-      employeeId: employee?.id || (role === 'Repartidor' ? 'emp-001' : undefined),
-      cedula: employee?.cedula || (role === 'Repartidor' ? '1017123456' : undefined),
+      ...(employee?.id || role === 'Repartidor' ? { employeeId: employee?.id || 'emp-001' } : {}),
+      ...(employee?.cedula || role === 'Repartidor' ? { cedula: employee?.cedula || '1017123456' } : {}),
       telefono: employee?.telefono || '3001234567',
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
