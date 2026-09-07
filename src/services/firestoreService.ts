@@ -66,16 +66,32 @@ export function cleanForFirestore<T>(data: T): T {
   return data;
 }
 
+/**
+ * Registra detalladamente en consola (console.error) cualquier error de conexión o consulta con Firestore.
+ */
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errMsg = error instanceof Error ? error.message : String(error);
   const errCode = (error as { code?: string })?.code || 'unknown';
-  
-  console.error(`❌ [Firestore Connection/Data Error] [Op: ${operationType}] [Path: ${path || 'unknown'}]:`, {
-    code: errCode,
-    message: errMsg,
-    authenticatedUser: auth.currentUser ? `${auth.currentUser.email} (${auth.currentUser.uid})` : 'Unauthenticated',
-    timestamp: new Date().toISOString(),
-  });
+
+  let consejoResolucion = 'Verifica la consola para más detalles.';
+  if (errCode === 'permission-denied') {
+    consejoResolucion = 'Permiso denegado. Revisa las reglas de seguridad en firestore.rules o el estado de autenticación del usuario.';
+  } else if (errCode === 'unavailable' || errMsg.includes('offline') || errMsg.includes('network')) {
+    consejoResolucion = 'No se pudo contactar el servidor de Firestore. Revisa tu conexión a internet o el proyecto configurado en Vercel.';
+  } else if (errCode === 'not-found') {
+    consejoResolucion = 'El documento o la base de datos de Firestore no fue encontrada. Revisa la variable VITE_FIREBASE_DATABASE_ID.';
+  }
+
+  console.error(
+    `🚨 [Firestore Error de Conexión / Operación]:\n` +
+    `  • Operación: ${operationType.toUpperCase()}\n` +
+    `  • Ruta: ${path || 'desconocida'}\n` +
+    `  • Código: ${errCode}\n` +
+    `  • Mensaje: ${errMsg}\n` +
+    `  • Diagnóstico: ${consejoResolucion}\n` +
+    `  • Usuario actual: ${auth.currentUser ? `${auth.currentUser.email} (${auth.currentUser.uid})` : 'No autenticado'}\n` +
+    `  • Hora: ${new Date().toLocaleString()}`
+  );
 
   const errInfo = {
     error: errMsg,
@@ -92,14 +108,32 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// User Profile Services
+/**
+ * Verifica la conectividad con Firestore realizando una lectura de diagnóstico.
+ */
+export const testFirestoreConnection = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    const testDoc = await getDoc(doc(db, SETTINGS_COLLECTION, 'company'));
+    console.info('✅ [Firestore Connection Test]: Conexión exitosa a Firestore.');
+    return { success: true, message: 'Conexión exitosa a Firestore.' };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('❌ [Firestore Connection Test Falló]: No se pudo conectar a la base de datos:', error);
+    return { success: false, message: msg };
+  }
+};
+
+// ==============================================================================
+// 1. PERFIL DE USUARIO
+// ==============================================================================
+
 export const saveUserProfileToFirestore = async (profile: AppUserProfile): Promise<void> => {
   try {
     const userRef = doc(db, USERS_COLLECTION, profile.uid);
     const cleaned = cleanForFirestore(profile);
     await setDoc(userRef, cleaned, { merge: true });
   } catch (error) {
-    console.error(`❌ [Firestore Error] Falló el guardado del perfil de usuario (${profile.uid}):`, error);
+    console.error(`❌ [Firestore Write Error] No se pudo guardar el perfil de usuario "${profile.uid}":`, error);
     handleFirestoreError(error, OperationType.WRITE, `${USERS_COLLECTION}/${profile.uid}`);
   }
 };
@@ -113,7 +147,7 @@ export const getUserProfileFromFirestore = async (uid: string): Promise<AppUserP
     }
     return null;
   } catch (error) {
-    console.error(`❌ [Firestore Error] Falló la lectura del perfil de usuario (${uid}):`, error);
+    console.error(`❌ [Firestore Read Error] No se pudo obtener el perfil de usuario "${uid}":`, error);
     handleFirestoreError(error, OperationType.GET, `${USERS_COLLECTION}/${uid}`);
     return null;
   }
@@ -135,13 +169,17 @@ export const subscribeUserProfile = (
       }
     },
     (error) => {
-      console.error(`❌ [Firestore Connection Error] Error al suscribirse al perfil de usuario (${uid}):`, error);
+      console.error(`❌ [Firestore Connection Error] Error al suscribirse al perfil de usuario en "${USERS_COLLECTION}/${uid}":`, error);
       if (onError) onError(error);
     }
   );
 };
 
-// Subscribe to Employees
+// ==============================================================================
+// 2. SUSCRIPCIONES EN TIEMPO REAL (LECTURAS CONTINUAS)
+// ==============================================================================
+
+// Suscripción a Empleados
 export const subscribeEmployees = (onData: (data: Employee[]) => void, onError?: (err: Error) => void) => {
   const colRef = collection(db, EMPLOYEES_COLLECTION);
   return onSnapshot(
@@ -160,7 +198,7 @@ export const subscribeEmployees = (onData: (data: Employee[]) => void, onError?:
   );
 };
 
-// Subscribe to Schedules
+// Suscripción a Horarios Semanales
 export const subscribeSchedules = (onData: (data: WeeklySchedule[]) => void, onError?: (err: Error) => void) => {
   const colRef = collection(db, SCHEDULES_COLLECTION);
   return onSnapshot(
@@ -179,7 +217,7 @@ export const subscribeSchedules = (onData: (data: WeeklySchedule[]) => void, onE
   );
 };
 
-// Subscribe to Zone Novedades
+// Suscripción a Novedades de Jefe de Zona
 export const subscribeZoneNovedades = (onData: (data: ZoneChiefNovedad[]) => void, onError?: (err: Error) => void) => {
   const colRef = collection(db, NOVEDADES_COLLECTION);
   return onSnapshot(
@@ -198,7 +236,7 @@ export const subscribeZoneNovedades = (onData: (data: ZoneChiefNovedad[]) => voi
   );
 };
 
-// Subscribe to Client Reports
+// Suscripción a Reportes de Clientes
 export const subscribeClientReports = (onData: (data: ClientOrderReport[]) => void, onError?: (err: Error) => void) => {
   const colRef = collection(db, CLIENT_REPORTS_COLLECTION);
   return onSnapshot(
@@ -217,7 +255,7 @@ export const subscribeClientReports = (onData: (data: ClientOrderReport[]) => vo
   );
 };
 
-// Subscribe to Driver Attendance Records
+// Suscripción al Registro de Asistencia de Repartidores
 export const subscribeDriverAttendance = (
   onData: (data: DriverAttendanceRecord[]) => void,
   onError?: (err: Error) => void
@@ -239,7 +277,7 @@ export const subscribeDriverAttendance = (
   );
 };
 
-// Subscribe to Periods
+// Suscripción a Periodos de Nómina
 export const subscribePeriods = (onData: (data: PayrollPeriod[]) => void, onError?: (err: Error) => void) => {
   const colRef = collection(db, PERIODS_COLLECTION);
   return onSnapshot(
@@ -258,7 +296,7 @@ export const subscribePeriods = (onData: (data: PayrollPeriod[]) => void, onErro
   );
 };
 
-// Subscribe to Company Settings
+// Suscripción a Configuración General de la Empresa
 export const subscribeCompanySettings = (onData: (data: CompanySettings) => void, onError?: (err: Error) => void) => {
   const docRef = doc(db, SETTINGS_COLLECTION, 'company');
   return onSnapshot(
@@ -269,13 +307,13 @@ export const subscribeCompanySettings = (onData: (data: CompanySettings) => void
       }
     },
     (error) => {
-      console.error('❌ [Firestore Connection Error] Error al leer configuración de empresa en "settings/company":', error);
+      console.error('❌ [Firestore Connection Error] Error al leer configuración en "settings/company":', error);
       if (onError) onError(error);
     }
   );
 };
 
-// Subscribe to Clients (Directorio de Clientes de SERGEM S.A.S.)
+// Suscripción a Clientes Corporativos (Directorio SERGEM S.A.S.)
 export const subscribeClients = (onData: (data: CompanyClient[]) => void, onError?: (err: Error) => void) => {
   const colRef = collection(db, CLIENTS_COLLECTION);
   return onSnapshot(
@@ -294,13 +332,16 @@ export const subscribeClients = (onData: (data: CompanyClient[]) => void, onErro
   );
 };
 
-// Save operations
+// ==============================================================================
+// 3. FUNCIONES DE GUARDADO Y ESCRITURA (MANEJO DE ERRORES EXPLÍCITO)
+// ==============================================================================
+
 export const saveClientToFirestore = async (client: CompanyClient): Promise<void> => {
   try {
     const cleaned = cleanForFirestore(client);
     await setDoc(doc(db, CLIENTS_COLLECTION, client.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar el cliente (${client.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado del cliente "${client.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -309,7 +350,7 @@ export const deleteClientFromFirestore = async (clientId: string): Promise<void>
   try {
     await deleteDoc(doc(db, CLIENTS_COLLECTION, clientId));
   } catch (err) {
-    console.error(`❌ [Firestore Delete Error] No se pudo eliminar el cliente (${clientId}) de Firestore:`, err);
+    console.error(`❌ [Firestore Delete Error] Falló la eliminación del cliente "${clientId}" de Firestore:`, err);
     throw err;
   }
 };
@@ -319,7 +360,7 @@ export const saveEmployeeToFirestore = async (emp: Employee): Promise<void> => {
     const cleaned = cleanForFirestore(emp);
     await setDoc(doc(db, EMPLOYEES_COLLECTION, emp.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar el empleado (${emp.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado del empleado "${emp.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -328,7 +369,7 @@ export const deleteEmployeeFromFirestore = async (empId: string): Promise<void> 
   try {
     await deleteDoc(doc(db, EMPLOYEES_COLLECTION, empId));
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo eliminar el empleado (${empId}) de Firestore:`, err);
+    console.error(`❌ [Firestore Delete Error] Falló la eliminación del empleado "${empId}" de Firestore:`, err);
     throw err;
   }
 };
@@ -338,7 +379,7 @@ export const saveScheduleToFirestore = async (schedule: WeeklySchedule): Promise
     const cleaned = cleanForFirestore(schedule);
     await setDoc(doc(db, SCHEDULES_COLLECTION, schedule.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar el horario (${schedule.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado del horario semanal "${schedule.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -348,7 +389,7 @@ export const saveZoneNovedadToFirestore = async (novedad: ZoneChiefNovedad): Pro
     const cleaned = cleanForFirestore(novedad);
     await setDoc(doc(db, NOVEDADES_COLLECTION, novedad.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar la novedad (${novedad.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado de la novedad "${novedad.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -358,7 +399,7 @@ export const saveClientReportToFirestore = async (report: ClientOrderReport): Pr
     const cleaned = cleanForFirestore(report);
     await setDoc(doc(db, CLIENT_REPORTS_COLLECTION, report.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar el reporte de cliente (${report.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado del reporte de cliente "${report.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -368,7 +409,7 @@ export const saveDriverAttendanceToFirestore = async (attendance: DriverAttendan
     const cleaned = cleanForFirestore(attendance);
     await setDoc(doc(db, DRIVER_ATTENDANCE_COLLECTION, attendance.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar la asistencia del repartidor (${attendance.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado del registro de asistencia "${attendance.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -378,7 +419,7 @@ export const savePeriodToFirestore = async (period: PayrollPeriod): Promise<void
     const cleaned = cleanForFirestore(period);
     await setDoc(doc(db, PERIODS_COLLECTION, period.id), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudo guardar el periodo (${period.id}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado del periodo de nómina "${period.id}" en Firestore:`, err);
     throw err;
   }
 };
@@ -388,7 +429,7 @@ export const saveCompanySettingsToFirestore = async (settings: CompanySettings):
     const cleaned = cleanForFirestore(settings);
     await setDoc(doc(db, SETTINGS_COLLECTION, 'company'), cleaned, { merge: true });
   } catch (err) {
-    console.error('❌ [Firestore Write Error] No se pudo guardar la configuración de empresa en Firestore:', err);
+    console.error('❌ [Firestore Write Error] Falló el guardado de la configuración de empresa en Firestore:', err);
     throw err;
   }
 };
@@ -401,12 +442,15 @@ export const savePeriodNovedadesToFirestore = async (
     const cleaned = cleanForFirestore({ map: novedadesMap });
     await setDoc(doc(db, NOVEDADES_MAP_COLLECTION, periodId), cleaned, { merge: true });
   } catch (err) {
-    console.error(`❌ [Firestore Write Error] No se pudieron guardar las novedades del periodo (${periodId}) en Firestore:`, err);
+    console.error(`❌ [Firestore Write Error] Falló el guardado de novedades del periodo "${periodId}" en Firestore:`, err);
     throw err;
   }
 };
 
-// Seed initial dataset to Firestore if currently empty
+// ==============================================================================
+// 4. SIEMBRA INICIAL DE DATOS
+// ==============================================================================
+
 export const seedInitialDatabase = async (data: {
   employees: Employee[];
   schedules: WeeklySchedule[];
@@ -419,66 +463,59 @@ export const seedInitialDatabase = async (data: {
   try {
     const empDocs = await getDocs(collection(db, EMPLOYEES_COLLECTION));
     if (!empDocs.empty) {
-      console.log('Firestore already contains data, skipping seed.');
+      console.info('ℹ️ [Firestore Seed]: La base de datos ya contiene registros, se omite la siembra inicial.');
       return false;
     }
 
-    console.log('Seeding initial data to Firestore...');
+    console.info('🌱 [Firestore Seed]: Sembrando datos iniciales en Firestore...');
     const batch = writeBatch(db);
 
-    // Employees
     data.employees.forEach((emp) => {
       const ref = doc(db, EMPLOYEES_COLLECTION, emp.id);
       batch.set(ref, cleanForFirestore(emp));
     });
 
-    // Schedules
     data.schedules.forEach((sch) => {
       const ref = doc(db, SCHEDULES_COLLECTION, sch.id);
       batch.set(ref, cleanForFirestore(sch));
     });
 
-    // Zone novedades
     data.zoneNovedades.forEach((nov) => {
       const ref = doc(db, NOVEDADES_COLLECTION, nov.id);
       batch.set(ref, cleanForFirestore(nov));
     });
 
-    // Client reports
     data.clientReports.forEach((rep) => {
       const ref = doc(db, CLIENT_REPORTS_COLLECTION, rep.id);
       batch.set(ref, cleanForFirestore(rep));
     });
 
-    // Periods
     data.periods.forEach((per) => {
       const ref = doc(db, PERIODS_COLLECTION, per.id);
       batch.set(ref, cleanForFirestore(per));
     });
 
-    // Settings
     const settingsRef = doc(db, SETTINGS_COLLECTION, 'company');
     batch.set(settingsRef, cleanForFirestore(data.company));
 
-    // Initial period novedades
     if (data.periods[0]) {
       const novMapRef = doc(db, NOVEDADES_MAP_COLLECTION, data.periods[0].id);
       batch.set(novMapRef, cleanForFirestore({ map: data.novedadesMap }));
     }
 
     await batch.commit();
-    console.log('Initial data successfully seeded to Firestore.');
+    console.info('✅ [Firestore Seed]: Datos iniciales sembrados exitosamente.');
     return true;
   } catch (error) {
-    console.error('Error seeding initial data to Firestore:', error);
+    console.error('❌ [Firestore Write Error] Falló la siembra inicial de datos en Firestore:', error);
     return false;
   }
 };
 
-/**
- * Completely empties all operational collections in Firestore:
- * employees, schedules, zoneNovedades, clientReports, periodNovedades, periods.
- */
+// ==============================================================================
+// 5. MANTENIMIENTO Y VACIADO
+// ==============================================================================
+
 export const clearAllFirestoreCollections = async (): Promise<{ success: boolean; deletedCount: number }> => {
   const collectionsToClear = [
     EMPLOYEES_COLLECTION,
@@ -499,11 +536,10 @@ export const clearAllFirestoreCollections = async (): Promise<{ success: boolean
         deletedCount++;
       }
     }
-    console.log(`🧹 Firestore limpiado con éxito. Se eliminaron ${deletedCount} documentos.`);
+    console.info(`🧹 [Firestore Info]: Colecciones vaciadas. Se eliminaron ${deletedCount} documentos.`);
     return { success: true, deletedCount };
   } catch (err) {
-    console.error('❌ Error al vaciar Firestore:', err);
+    console.error('❌ [Firestore Delete Error] Error al vaciar las colecciones de Firestore:', err);
     throw err;
   }
 };
-
