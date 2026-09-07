@@ -13,6 +13,7 @@ import {
 } from '../services/emailInviteService';
 import { saveInvitationRecord, queueFirestoreMail } from '../services/firestoreService';
 import { UnconnectedDriversSection } from './UnconnectedDriversSection';
+import { BulkInviteContent } from './BulkInviteModal';
 
 import {
   Users,
@@ -36,6 +37,8 @@ import {
   Smartphone,
   Send,
   RefreshCw,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
 
 interface AdminPortalViewProps {
@@ -58,6 +61,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('TODOS');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [inviteTab, setInviteTab] = useState<'manual' | 'bulk'>('manual');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Automatic Dispatch Notification State
@@ -412,14 +416,17 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 shrink-0 pt-2 lg:pt-0">
-          {/* Invite Collaborator Button */}
+          {/* Invite Collaborator Button (Unified with Manual Form, Bulk Upload & Template Download) */}
           <button
             id="btn-invite-employee"
-            onClick={() => setIsInviteModalOpen(true)}
+            onClick={() => {
+              setInviteTab('manual');
+              setIsInviteModalOpen(true);
+            }}
             className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3.5 rounded-xl shadow-md shadow-red-600/20 flex items-center justify-center space-x-2.5 transition-all cursor-pointer whitespace-nowrap active:scale-95 border border-red-500/20 text-xs md:text-sm"
           >
             <UserPlus className="w-4.5 h-4.5" />
-            <span>Invitar Nuevo Colaborador</span>
+            <span>Invitar Colaborador</span>
           </button>
         </div>
       </div>
@@ -751,202 +758,299 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
       </div>
 
-      {/* Invite Employee Modal Form */}
+      {/* Unified Invite Collaborator Modal (Individual Manual + Bulk Excel Upload + Download Template) */}
       {isInviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="bg-slate-50/90 text-slate-900 px-6 py-4 flex items-center justify-between border-b border-slate-200">
+          <div
+            className={`bg-white rounded-3xl w-full shadow-2xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col transition-all duration-200 ${
+              inviteTab === 'bulk' ? 'max-w-4xl' : 'max-w-2xl'
+            }`}
+          >
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
               <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 border border-red-200/80 flex items-center justify-center">
-                  <UserPlus className="w-4.5 h-4.5" />
+                <div className="w-10 h-10 rounded-2xl bg-red-600/30 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0">
+                  <UserPlus className="w-5 h-5 text-red-400" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Invitar Nuevo Colaborador</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">Asignar rol y despachar invitación por correo</p>
+                  <h3 className="text-base font-extrabold text-white">
+                    Invitar Colaboradores a la Plataforma
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    SERGEM S.A.S. • Registro y generación de enlaces oficiales de acceso
+                  </p>
                 </div>
               </div>
-              <button
-                onClick={() => setIsInviteModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <div className="flex items-center space-x-2">
+                {/* Download Official Template inside the Modal */}
+                <a
+                  id="modal-link-download-template"
+                  href="/Plantilla_Registro_Colaboradores_SERGEM.xlsx"
+                  download="Plantilla_Registro_Colaboradores_SERGEM.xlsx"
+                  className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 text-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                  title="Descargar plantilla de Excel con ejemplos para Repartidor, Administrativo y Jefe de Zona"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Descargar Plantilla Excel</span>
+                </a>
+
+                <button
+                  onClick={() => setIsInviteModalOpen(false)}
+                  className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                  title="Cerrar modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleInviteSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
-              {/* Basic Datos */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Nombre(s) *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Juan Carlos"
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Apellido(s) *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Pérez Ramírez"
-                    value={apellido}
-                    onChange={(e) => setApellido(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Cédula de Ciudadanía *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. 1144089234"
-                    value={cedula}
-                    onChange={(e) => setCedula(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Correo Electrónico (para invitación) *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="empleado@correo.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Teléfono / Celular (WhatsApp)</label>
-                  <input
-                    type="text"
-                    placeholder="315 000 0000"
-                    value={telefono}
-                    onChange={(e) => setTelefono(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Rol Obligatorio *</label>
-                  <select
-                    required
-                    value={rol}
-                    onChange={(e) => setRol(e.target.value as UserRole)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-900 focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
-                  >
-                    <option value="Repartidor">Repartidor</option>
-                    <option value="Jefe de Zona">Jefe de Zona</option>
-                    <option value="Jefe de Operaciones">Jefe de Operaciones</option>
-                    <option value="Administrativo">Administrativo</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Vehicle plate (Optional) & Jefe de Zona assignment for Repartidor */}
-              {rol === 'Repartidor' && (
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                  <span className="text-xs font-bold text-slate-800 block">
-                    Configuración de Operación para Repartidores:
-                  </span>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Placa del Vehículo (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ej. VTX-89D"
-                        value={placaVehiculo}
-                        onChange={(e) => setPlacaVehiculo(e.target.value)}
-                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs uppercase font-mono font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        Asignar Jefe de Zona
-                      </label>
-                      <select
-                        value={jefeZonaId}
-                        onChange={(e) => setJefeZonaId(e.target.value)}
-                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
-                      >
-                        {jefesDeZona.length === 0 ? (
-                          <option value="">(Sin jefes de zona creados aún - asignar después)</option>
-                        ) : (
-                          <>
-                            <option value="">-- Seleccionar Jefe de Zona --</option>
-                            {jefesDeZona.map((jefe) => (
-                              <option key={jefe.id} value={jefe.id}>
-                                {jefe.nombre} {jefe.apellido} ({jefe.cargo})
-                              </option>
-                            ))}
-                          </>
-                        )}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Financial & Contract basics */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Cargo</label>
-                  <input
-                    type="text"
-                    value={cargo}
-                    onChange={(e) => setCargo(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl font-medium text-xs bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Salario Base ($ COP)</label>
-                  <input
-                    type="number"
-                    value={salarioBase}
-                    onChange={(e) => setSalarioBase(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl font-mono text-xs font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 text-xs flex items-center space-x-2">
-                <Send className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  Al registrar el colaborador con su correo, <strong>el enlace de invitación oficial se enviará automáticamente</strong> y quedará registrado sin abrir ninguna página adicional.
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+            {/* Segmented Navigation Tabs */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 pt-3 bg-slate-50/80 shrink-0">
+              <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={() => setIsInviteModalOpen(false)}
-                  className="px-4 py-2.5 font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer transition-all active:scale-95"
+                  id="tab-invite-manual"
+                  onClick={() => setInviteTab('manual')}
+                  className={`pb-3 px-3 text-xs md:text-sm font-bold border-b-2 flex items-center space-x-2 transition-all cursor-pointer ${
+                    inviteTab === 'manual'
+                      ? 'border-red-600 text-red-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
                 >
-                  Cancelar
+                  <UserPlus className="w-4 h-4" />
+                  <span>Registro Individual</span>
                 </button>
+
                 <button
-                  type="submit"
-                  className="px-5 py-2.5 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-600/20 flex items-center space-x-2 cursor-pointer active:scale-95 transition-all"
+                  type="button"
+                  id="tab-invite-bulk"
+                  onClick={() => setInviteTab('bulk')}
+                  className={`pb-3 px-3 text-xs md:text-sm font-bold border-b-2 flex items-center space-x-2 transition-all cursor-pointer ${
+                    inviteTab === 'bulk'
+                      ? 'border-red-600 text-red-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
                 >
-                  <Send className="w-4 h-4" />
-                  <span>Registrar y Enviar Enlace Automático</span>
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span>Carga Masiva (Excel)</span>
                 </button>
               </div>
-            </form>
+
+              {/* Mobile link for template */}
+              <a
+                href="/Plantilla_Registro_Colaboradores_SERGEM.xlsx"
+                download="Plantilla_Registro_Colaboradores_SERGEM.xlsx"
+                className="sm:hidden pb-3 text-xs font-bold text-emerald-700 flex items-center space-x-1 hover:text-emerald-800"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Plantilla</span>
+              </a>
+            </div>
+
+            {/* Tab 1: Formulario Individual */}
+            {inviteTab === 'manual' && (
+              <form onSubmit={handleInviteSubmit} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+                {/* Switcher Helper Banner */}
+                <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl flex items-center justify-between text-xs text-blue-900">
+                  <div className="flex items-center space-x-2">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>¿Tienes una lista de varios colaboradores? Usa la carga masiva en Excel para subirlos todos en segundos.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInviteTab('bulk')}
+                    className="font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer shrink-0 ml-3 whitespace-nowrap"
+                  >
+                    Carga Masiva →
+                  </button>
+                </div>
+
+                {/* Basic Datos */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Nombre(s) *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Juan Carlos"
+                      value={nombre}
+                      onChange={(e) => setNombre(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Apellido(s) *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Pérez Ramírez"
+                      value={apellido}
+                      onChange={(e) => setApellido(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Cédula de Ciudadanía *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. 1144089234"
+                      value={cedula}
+                      onChange={(e) => setCedula(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Correo Electrónico (para invitación) *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="empleado@correo.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Teléfono / Celular (WhatsApp)</label>
+                    <input
+                      type="text"
+                      placeholder="315 000 0000"
+                      value={telefono}
+                      onChange={(e) => setTelefono(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Rol Obligatorio *</label>
+                    <select
+                      required
+                      value={rol}
+                      onChange={(e) => setRol(e.target.value as UserRole)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white text-slate-900 focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                    >
+                      <option value="Repartidor">Repartidor</option>
+                      <option value="Jefe de Zona">Jefe de Zona</option>
+                      <option value="Jefe de Operaciones">Jefe de Operaciones</option>
+                      <option value="Administrativo">Administrativo</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Vehicle plate (Optional) & Jefe de Zona assignment for Repartidor */}
+                {rol === 'Repartidor' && (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <span className="text-xs font-bold text-slate-800 block">
+                      Configuración de Operación para Repartidores:
+                    </span>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Placa del Vehículo (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ej. VTX-89D"
+                          value={placaVehiculo}
+                          onChange={(e) => setPlacaVehiculo(e.target.value)}
+                          className="w-full p-2.5 border border-slate-300 rounded-xl text-xs uppercase font-mono font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">
+                          Asignar Jefe de Zona
+                        </label>
+                        <select
+                          value={jefeZonaId}
+                          onChange={(e) => setJefeZonaId(e.target.value)}
+                          className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                        >
+                          {jefesDeZona.length === 0 ? (
+                            <option value="">(Sin jefes de zona creados aún - asignar después)</option>
+                          ) : (
+                            <>
+                              <option value="">-- Seleccionar Jefe de Zona --</option>
+                              {jefesDeZona.map((jefe) => (
+                                <option key={jefe.id} value={jefe.id}>
+                                  {jefe.nombre} {jefe.apellido} ({jefe.cargo})
+                                </option>
+                              ))}
+                            </>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Financial & Contract basics */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Cargo</label>
+                    <input
+                      type="text"
+                      value={cargo}
+                      onChange={(e) => setCargo(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl font-medium text-xs bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Salario Base ($ COP)</label>
+                    <input
+                      type="number"
+                      value={salarioBase}
+                      onChange={(e) => setSalarioBase(e.target.value)}
+                      className="w-full p-2.5 border border-slate-300 rounded-xl font-mono text-xs font-bold bg-white focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 text-xs flex items-center space-x-2">
+                  <Send className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Al registrar el colaborador con su correo, <strong>el enlace de invitación oficial se enviará automáticamente</strong> y quedará registrado en el sistema.
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsInviteModalOpen(false)}
+                    className="px-4 py-2.5 font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer transition-all active:scale-95"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-600/20 flex items-center space-x-2 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Registrar y Enviar Enlace Automático</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Tab 2: Carga Masiva (Excel) */}
+            {inviteTab === 'bulk' && (
+              <div className="p-6 overflow-y-auto flex-1">
+                <BulkInviteContent
+                  existingEmployees={employees}
+                  onAddEmployee={onAddEmployee}
+                  onCompleteOrClose={() => setIsInviteModalOpen(false)}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
