@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Employee,
   UserRole,
@@ -6,9 +6,14 @@ import {
   DriverAttendanceRecord,
   ClientOrderReport,
 } from '../types/payroll';
-import { buildEmployeeInvite } from '../services/emailInviteService';
-import { saveInvitationRecord } from '../services/firestoreService';
+import {
+  buildEmployeeInvite,
+  sendAutomaticInviteEmail,
+  checkEmailServerConfig,
+} from '../services/emailInviteService';
+import { saveInvitationRecord, queueFirestoreMail } from '../services/firestoreService';
 import { UnconnectedDriversSection } from './UnconnectedDriversSection';
+
 import {
   Users,
   UserPlus,
@@ -57,11 +62,24 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   // Automatic Dispatch Notification State
   const [autoSendNotice, setAutoSendNotice] = useState<{
+    status: 'success' | 'warning' | 'sending';
     email: string;
     name: string;
     role: string;
     inviteUrl: string;
+    message: string;
+    provider?: string;
+    gmailUrl?: string;
+    outlookUrl?: string;
+    whatsappUrl?: string;
   } | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailServerStatus, setEmailServerStatus] = useState<{
+    checked: boolean;
+    configured: boolean;
+    provider: string;
+    senderEmail?: string;
+  }>({ checked: false, configured: false, provider: 'none' });
 
   // Form State for Invitations
   const [nombre, setNombre] = useState('');
@@ -75,6 +93,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [cargo, setCargo] = useState('Repartidor Motorizado');
   const [departamento, setDepartamento] = useState<any>('Operaciones y Mensajería');
   const [salarioBase, setSalarioBase] = useState('1423500');
+
+  // Verify backend email status on load
+  useEffect(() => {
+    checkEmailServerConfig().then((res) => {
+      setEmailServerStatus({
+        checked: true,
+        configured: res.configured,
+        provider: res.provider,
+        senderEmail: res.senderEmail,
+      });
+    });
+  }, []);
 
   // Available Jefes de Zona
   const jefesDeZona = employees.filter((e) => e.rol === 'Jefe de Zona');
@@ -98,35 +128,81 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   };
 
   const handleAutoDispatchInvite = async (emp: Employee) => {
-    const updatedEmp: Employee = {
-      ...emp,
-      estadoInvitacion: 'Enviada',
-    };
-    onUpdateEmployee(updatedEmp);
+    setIsSendingEmail(true);
+    setAutoSendNotice({
+      status: 'sending',
+      email: emp.email || '',
+      name: `${emp.nombre} ${emp.apellido}`,
+      role: emp.rol,
+      inviteUrl: '',
+      message: 'Conectando con el servidor de correo para despachar invitación...',
+    });
 
     const jefeAsignado = employees.find((j) => j.id === emp.jefeZonaId);
-    const inviteDetails = buildEmployeeInvite(emp, jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined);
+    const jefeName = jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined;
 
+    // 1. Send via server API (SMTP / Resend)
+    const result = await sendAutomaticInviteEmail(emp, jefeName);
+
+    // 2. Queue in Firestore 'mail' collection (Firebase Trigger Email extension)
+    if (emp.email) {
+      await queueFirestoreMail({
+        to: emp.email,
+        subject: result.details.subject,
+        text: result.details.bodyText,
+      });
+    }
+
+    // 3. Save invitation record in Firestore 'invitations'
     await saveInvitationRecord({
       id: `INV-${emp.id}`,
       employeeId: emp.id,
       recipientEmail: emp.email || '',
       recipientName: `${emp.nombre} ${emp.apellido}`,
       role: emp.rol,
-      portal: inviteDetails.portal,
-      inviteUrl: inviteDetails.inviteUrl,
+      portal: result.details.portal,
+      inviteUrl: result.details.inviteUrl,
       status: 'Enviada',
       sentAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     });
 
-    setAutoSendNotice({
-      email: emp.email || '',
-      name: `${emp.nombre} ${emp.apellido}`,
-      role: emp.rol,
-      inviteUrl: inviteDetails.inviteUrl,
-    });
-    setTimeout(() => setAutoSendNotice(null), 7000);
+    // 4. Update employee state
+    const updatedEmp: Employee = {
+      ...emp,
+      estadoInvitacion: 'Enviada',
+    };
+    onUpdateEmployee(updatedEmp);
+    setIsSendingEmail(false);
+
+    // 5. Update UI feedback
+    if (result.success) {
+      setAutoSendNotice({
+        status: 'success',
+        email: emp.email || '',
+        name: `${emp.nombre} ${emp.apellido}`,
+        role: emp.rol,
+        inviteUrl: result.details.inviteUrl,
+        message: result.message,
+        provider: result.provider,
+        gmailUrl: result.details.gmailUrl,
+        outlookUrl: result.details.outlookUrl,
+        whatsappUrl: result.details.whatsappUrl,
+      });
+      setTimeout(() => setAutoSendNotice(null), 9000);
+    } else {
+      setAutoSendNotice({
+        status: 'warning',
+        email: emp.email || '',
+        name: `${emp.nombre} ${emp.apellido}`,
+        role: emp.rol,
+        inviteUrl: result.details.inviteUrl,
+        message: result.message,
+        gmailUrl: result.details.gmailUrl,
+        outlookUrl: result.details.outlookUrl,
+        whatsappUrl: result.details.whatsappUrl,
+      });
+    }
   };
 
   const handleInviteSubmit = async (e: React.FormEvent) => {
@@ -161,35 +237,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     // 1. Save collaborator to Firestore
     onAddEmployee(newEmp);
 
-    // 2. Build official invitation parameters
-    const jefeAsignado = employees.find((j) => j.id === newEmp.jefeZonaId);
-    const inviteDetails = buildEmployeeInvite(newEmp, jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined);
-
-    // 3. Register and dispatch invitation automatically without opening external pages
-    await saveInvitationRecord({
-      id: `INV-${newEmp.id}`,
-      employeeId: newEmp.id,
-      recipientEmail: newEmp.email || '',
-      recipientName: `${newEmp.nombre} ${newEmp.apellido}`,
-      role: newEmp.rol,
-      portal: inviteDetails.portal,
-      inviteUrl: inviteDetails.inviteUrl,
-      status: 'Enviada',
-      sentAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    });
-
-    // 4. Show automatic success feedback
-    setAutoSendNotice({
-      email: newEmp.email || '',
-      name: `${newEmp.nombre} ${newEmp.apellido}`,
-      role: newEmp.rol,
-      inviteUrl: inviteDetails.inviteUrl,
-    });
-    setTimeout(() => setAutoSendNotice(null), 8000);
-
     setIsInviteModalOpen(false);
     resetForm();
+
+    // 2. Dispatch invitation via server and save invitation records
+    await handleAutoDispatchInvite(newEmp);
   };
 
   const resetForm = () => {
@@ -209,42 +261,153 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     <div id="admin-portal-view" className="space-y-6">
       {/* Automatic Invite Dispatch Alert */}
       {autoSendNotice && (
-        <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in">
-          <div className="flex items-center space-x-3 text-xs font-semibold">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
-              <Send className="w-4 h-4 text-emerald-600" />
+        <div
+          className={`p-4 md:p-5 rounded-2xl border shadow-xs animate-in fade-in transition-all ${
+            autoSendNotice.status === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+              : autoSendNotice.status === 'warning'
+              ? 'bg-amber-50 border-amber-300 text-amber-950'
+              : 'bg-blue-50 border-blue-300 text-blue-950'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start space-x-3.5">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                  autoSendNotice.status === 'success'
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                    : autoSendNotice.status === 'warning'
+                    ? 'bg-amber-100 text-amber-700 border-amber-200'
+                    : 'bg-blue-100 text-blue-700 border-blue-200'
+                }`}
+              >
+                {autoSendNotice.status === 'sending' ? (
+                  <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+                ) : autoSendNotice.status === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <Mail className="w-5 h-5 text-amber-600" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <p className="font-black text-sm md:text-base">
+                  {autoSendNotice.status === 'success' && '¡Correo Oficial Enviado al Destinatario!'}
+                  {autoSendNotice.status === 'sending' && 'Enviando invitación por correo electrónico...'}
+                  {autoSendNotice.status === 'warning' && 'Invitación Registrada en el Sistema'}
+                </p>
+                <p className="text-xs leading-relaxed opacity-90 max-w-3xl">
+                  {autoSendNotice.status === 'success' && (
+                    <span>
+                      Se despachó el correo oficial a <strong>{autoSendNotice.email}</strong> para <strong>{autoSendNotice.name}</strong> ({autoSendNotice.role}). Llegará directamente a su bandeja de entrada o spam.
+                    </span>
+                  )}
+                  {autoSendNotice.status === 'sending' && (
+                    <span>
+                      Procesando envío hacia <strong>{autoSendNotice.email}</strong>...
+                    </span>
+                  )}
+                  {autoSendNotice.status === 'warning' && (
+                    <span>
+                      El colaborador <strong>{autoSendNotice.name}</strong> ({autoSendNotice.email}) quedó registrado con rol <strong>{autoSendNotice.role}</strong>. Para que le llegue de inmediato a su correo sin esperar la activación del servicio SMTP en segundo plano, haz clic en enviar por Gmail u Outlook:
+                    </span>
+                  )}
+                </p>
+
+                {/* Direct 1-Click Action Buttons for Immediate Delivery */}
+                {autoSendNotice.status === 'warning' && (
+                  <div className="pt-2.5 flex flex-wrap items-center gap-2">
+                    {autoSendNotice.gmailUrl && (
+                      <a
+                        href={autoSendNotice.gmailUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Despachar con Gmail Web</span>
+                      </a>
+                    )}
+                    {autoSendNotice.outlookUrl && (
+                      <a
+                        href={autoSendNotice.outlookUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Despachar con Outlook Web</span>
+                      </a>
+                    )}
+                    {autoSendNotice.whatsappUrl && (
+                      <a
+                        href={autoSendNotice.whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>Enviar por WhatsApp</span>
+                      </a>
+                    )}
+                    {autoSendNotice.inviteUrl && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(autoSendNotice.inviteUrl);
+                          setCopiedId('notice-copy');
+                          setTimeout(() => setCopiedId(null), 2000);
+                        }}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-900 rounded-xl text-xs font-bold shadow-2xs hover:bg-amber-100/60 cursor-pointer active:scale-95 transition-all"
+                      >
+                        {copiedId === 'notice-copy' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedId === 'notice-copy' ? '¡Enlace Copiado!' : 'Copiar Enlace'}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="font-extrabold text-emerald-900 text-xs sm:text-sm">
-                ¡Enlace de invitación enviado automáticamente a {autoSendNotice.email}!
-              </p>
-              <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                Colaborador: <strong>{autoSendNotice.name}</strong> • Rol configurado: <strong>{autoSendNotice.role}</strong>. El registro y enlace oficial se han procesado de forma automática sin abrir páginas adicionales.
-              </p>
-            </div>
+            <button
+              onClick={() => setAutoSendNotice(null)}
+              className="p-1.5 rounded-lg hover:bg-black/5 cursor-pointer shrink-0"
+              title="Cerrar notificación"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={() => setAutoSendNotice(null)}
-            className="text-emerald-700 hover:text-emerald-950 text-xs font-black p-1.5 rounded-lg hover:bg-emerald-100 cursor-pointer shrink-0"
-            title="Cerrar notificación"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
       )}
 
       {/* Header Banner */}
       <div className="relative overflow-hidden bg-gradient-to-b from-slate-100/90 to-slate-200/60 text-slate-900 rounded-2xl p-7 md:p-8 shadow-xs border border-slate-300/80 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="space-y-2 max-w-3xl">
-          <div className="inline-flex items-center space-x-2 bg-white border border-slate-300/80 text-red-700 font-extrabold text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-xl shadow-2xs">
-            <ShieldCheck className="w-4 h-4 text-red-600" />
-            <span>Módulo de Control Administrativo</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center space-x-2 bg-white border border-slate-300/80 text-red-700 font-extrabold text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-xl shadow-2xs">
+              <ShieldCheck className="w-4 h-4 text-red-600" />
+              <span>Módulo de Control Administrativo</span>
+            </div>
+
+            {/* Email Server Status Chip */}
+            {emailServerStatus.configured ? (
+              <div className="inline-flex items-center space-x-1.5 bg-emerald-100/80 border border-emerald-300 text-emerald-900 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Despacho Automático: {emailServerStatus.provider.toUpperCase()} Activo</span>
+              </div>
+            ) : (
+              <div
+                className="inline-flex items-center space-x-1.5 bg-amber-100/80 border border-amber-300 text-amber-950 text-xs font-bold px-3 py-1.5 rounded-xl shadow-2xs"
+                title="Para despacho 100% autónomo por SMTP sin clics, configure SMTP_USER y SMTP_PASS o RESEND_API_KEY en variables de entorno"
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-700" />
+                <span>Despacho Directo & 1-Clic</span>
+              </div>
+            )}
           </div>
+
           <h2 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900">
             Portal de Administración & Invitaciones
           </h2>
           <p className="text-slate-600 text-xs md:text-sm font-medium leading-relaxed">
-            Invita nuevos colaboradores, asigna roles y turnos, y gestiona la estructura de SERGEM S.A.S. con enlaces automáticos y sincronización directa.
+            Invita nuevos colaboradores, asigna roles y turnos, y gestiona la estructura de SERGEM S.A.S. con despacho de enlaces a su correo y sincronización en tiempo real.
           </p>
         </div>
 
@@ -522,22 +685,49 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
                     {/* Acciones de Invitación */}
                     <td className="py-3.5 px-5 text-right">
-                      <div className="flex items-center justify-end space-x-2">
+                      <div className="flex items-center justify-end space-x-1.5">
                         {/* Send / Resend Email Button */}
                         <button
                           onClick={() => handleAutoDispatchInvite(emp)}
-                          title="Enviar enlace automáticamente por correo sin abrir páginas adicionales"
-                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-800 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
+                          disabled={isSendingEmail}
+                          title="Enviar enlace automáticamente por correo y registrar en el sistema"
+                          className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-800 rounded-xl transition-all flex items-center space-x-1 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs disabled:opacity-50"
                         >
                           <Send className="w-3.5 h-3.5 text-red-600" />
                           <span>Enviar Enlace</span>
                         </button>
 
+                        {/* Quick Gmail Direct Compose Button */}
+                        {emp.email && (
+                          <a
+                            href={buildEmployeeInvite(emp).gmailUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Abrir redacción directa en Gmail con la plantilla oficial"
+                            className="p-1.5 bg-red-100/60 hover:bg-red-200/80 border border-red-200 text-red-800 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95 shadow-2xs"
+                          >
+                            <Mail className="w-3.5 h-3.5 text-red-700" />
+                          </a>
+                        )}
+
+                        {/* Quick WhatsApp Direct Button */}
+                        {emp.telefono && buildEmployeeInvite(emp).whatsappUrl && (
+                          <a
+                            href={buildEmployeeInvite(emp).whatsappUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Enviar enlace oficial por WhatsApp"
+                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95 shadow-2xs"
+                          >
+                            <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+                          </a>
+                        )}
+
                         {/* Copy Direct Link */}
                         <button
                           onClick={() => handleCopyInviteLink(emp)}
                           title="Copiar enlace directo de invitación"
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300/70 text-slate-700 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300/70 text-slate-700 rounded-xl transition-all flex items-center space-x-1 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
                         >
                           {copiedId === emp.id ? (
                             <>

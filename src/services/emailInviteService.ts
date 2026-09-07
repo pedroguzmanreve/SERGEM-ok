@@ -145,3 +145,108 @@ export function dispatchNativeEmailInvite(details: EmailInviteDetails): void {
   link.click();
   document.body.removeChild(link);
 }
+
+export interface SendInviteResult {
+  success: boolean;
+  configured: boolean;
+  provider?: string;
+  message: string;
+  details: EmailInviteDetails;
+}
+
+/**
+ * Checks if the backend has SMTP or Resend configured for autonomous sending.
+ */
+export async function checkEmailServerConfig(): Promise<{ configured: boolean; provider: string; senderEmail?: string }> {
+  try {
+    const res = await fetch('/api/email-config-status');
+    if (!res.ok) return { configured: false, provider: 'none' };
+    const data = await res.json();
+    return {
+      configured: Boolean(data.configured),
+      provider: data.provider || 'none',
+      senderEmail: data.senderEmail,
+    };
+  } catch {
+    return { configured: false, provider: 'none' };
+  }
+}
+
+/**
+ * Sends the invitation email automatically via the server-side API (/api/send-invite-email).
+ * If SMTP or Resend is configured, the email is dispatched directly into the recipient's inbox.
+ */
+export async function sendAutomaticInviteEmail(
+  employee: Employee,
+  jefeZonaName?: string
+): Promise<SendInviteResult> {
+  const details = buildEmployeeInvite(employee, jefeZonaName);
+
+  if (!employee.email) {
+    return {
+      success: false,
+      configured: false,
+      message: 'El colaborador no tiene un correo electrónico registrado.',
+      details,
+    };
+  }
+
+  try {
+    const response = await fetch('/api/send-invite-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipientEmail: details.recipientEmail,
+        employeeName: `${employee.nombre} ${employee.apellido}`,
+        cedula: employee.cedula,
+        role: employee.rol,
+        portalDisplayName: details.portalDisplayName,
+        cargo: employee.cargo,
+        inviteUrl: details.inviteUrl,
+        placaVehiculo: employee.placaVehiculo,
+        jefeZonaName: jefeZonaName,
+        subject: details.subject,
+        bodyText: details.bodyText,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        configured: true,
+        message: errorData.message || 'Error en el servidor de correo al procesar el envío.',
+        details,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+      return {
+        success: true,
+        configured: true,
+        provider: data.provider,
+        message: `Correo oficial despachado con éxito a ${details.recipientEmail} (${data.provider === 'resend' ? 'Resend' : 'Servidor SMTP'}).`,
+        details,
+      };
+    }
+
+    return {
+      success: false,
+      configured: Boolean(data.configured),
+      message: data.message || 'Servicio de correo automático pendiente de credenciales SMTP o API key en el servidor.',
+      details,
+    };
+  } catch (error) {
+    console.error('Error al despachar correo automático:', error);
+    return {
+      success: false,
+      configured: false,
+      message: 'No se pudo conectar con el endpoint de despacho de correo.',
+      details,
+    };
+  }
+}

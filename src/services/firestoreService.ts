@@ -570,3 +570,32 @@ export const saveInvitationRecord = async (invitation: SentInvitationRecord): Pr
     console.error(`❌ [Firestore Error] No se pudo registrar la invitación para "${invitation.recipientEmail}":`, error);
   }
 };
+
+/**
+ * Inserts a document into the Firestore 'mail' collection,
+ * which is automatically processed by the Firebase Trigger Email extension if installed.
+ */
+export const queueFirestoreMail = async (params: {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}): Promise<void> => {
+  try {
+    const mailId = `mail-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const mailRef = doc(db, 'mail', mailId);
+    await setDoc(mailRef, {
+      to: [params.to],
+      message: {
+        subject: params.subject,
+        text: params.text,
+        html: params.html || params.text,
+      },
+      createdAt: new Date().toISOString(),
+    });
+    console.info(`✅ [Firestore Mail Extension]: Documento encolado en colección 'mail' para ${params.to}`);
+  } catch (err) {
+    console.warn(`⚠️ [Firestore Mail Extension]: No se pudo escribir en colección 'mail':`, err);
+  }
+};
+
