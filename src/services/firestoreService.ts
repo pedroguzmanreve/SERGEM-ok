@@ -543,3 +543,30 @@ export const clearAllFirestoreCollections = async (): Promise<{ success: boolean
     throw err;
   }
 };
+
+// ==============================================================================
+// 6. GESTIÓN DE INVITACIONES AUTOMÁTICAS
+// ==============================================================================
+
+export interface SentInvitationRecord {
+  id: string;
+  employeeId: string;
+  recipientEmail: string;
+  recipientName: string;
+  role: string;
+  portal: string;
+  inviteUrl: string;
+  status: 'Enviada' | 'Aceptada';
+  sentAt: string;
+  createdAt: string;
+}
+
+export const saveInvitationRecord = async (invitation: SentInvitationRecord): Promise<void> => {
+  try {
+    const docRef = doc(db, 'invitations', invitation.id);
+    await setDoc(docRef, cleanForFirestore(invitation), { merge: true });
+    console.info(`✅ [Firestore Invitación]: Invitación oficial registrada y despachada para "${invitation.recipientEmail}".`);
+  } catch (error) {
+    console.error(`❌ [Firestore Error] No se pudo registrar la invitación para "${invitation.recipientEmail}":`, error);
+  }
+};

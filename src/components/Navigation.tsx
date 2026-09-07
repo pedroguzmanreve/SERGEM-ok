@@ -46,14 +46,14 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'Portal Jefe de Zona',
       icon: CalendarDays,
       badge: 'Turnos',
-      allowedRoles: ['Administrativo', 'Jefe de Zona'],
+      allowedRoles: ['Jefe de Zona'],
     },
     {
       id: 'driver-portal',
       label: 'Portal Repartidor',
       icon: Truck,
       badge: currentRole === 'Repartidor' ? 'Mis Turnos' : 'Supervisión',
-      allowedRoles: ['Administrativo', 'Repartidor'],
+      allowedRoles: ['Repartidor'],
     },
     {
       id: 'client-report',

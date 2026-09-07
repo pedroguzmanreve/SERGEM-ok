@@ -660,30 +660,31 @@ function AppContent({
             clientReports={clientReports}
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
-            onWipeDatabase={handleWipeEntireDatabase}
           />
         )}
 
         {/* Modulo 2: Portal Jefe de Zona */}
-        {activeTab === 'zone-chief' && (currentRole === 'Administrativo' || currentRole === 'Jefe de Zona' || inviteParams?.targetRole === 'Jefe de Zona') && (
+        {activeTab === 'zone-chief' && (currentRole === 'Jefe de Zona' || inviteParams?.targetRole === 'Jefe de Zona') && (
           <ZoneChiefPortalView
             employees={employees}
             schedules={schedules}
             novedades={zoneNovedades}
             attendanceRecords={driverAttendance}
             clientReports={clientReports}
+            clients={clients}
             onSaveSchedule={handleSaveSchedule}
             onDeleteSchedule={handleDeleteSchedule}
             onAddNovedad={handleAddZoneNovedad}
             onDeleteNovedad={handleDeleteZoneNovedad}
             onRecordAttendance={handleRecordAttendance}
+            onAddEmployee={handleAddEmployee}
             currentRole={inviteParams?.targetRole === 'Jefe de Zona' ? 'Jefe de Zona' : currentRole}
             userProfile={userProfile}
           />
         )}
 
         {/* Modulo Repartidor: Portal Repartidor */}
-        {activeTab === 'driver-portal' && (
+        {activeTab === 'driver-portal' && (currentRole === 'Repartidor' || inviteParams?.targetRole === 'Repartidor') && (
           <DriverPortalView
             employees={employees}
             schedules={schedules}

@@ -53,7 +53,7 @@ export interface Employee {
   email?: string;
   telefono?: string;
   ciudad?: string;
-  estadoInvitacion?: 'Invitado' | 'Activo' | 'Pendiente';
+  estadoInvitacion?: 'Invitado' | 'Enviada' | 'Activo' | 'Pendiente';
 }
 
 export type ShiftType = 'Continua' | 'Partido' | 'Medio Tiempo Mañana' | 'Medio Tiempo Tarde' | 'Descanso';

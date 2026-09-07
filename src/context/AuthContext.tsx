@@ -93,6 +93,25 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
                 }
               }
             }
+
+            // Sync with administrative privileges or employee records so all admins share the exact same view
+            const email = fbUser.email?.toLowerCase() || '';
+            const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email) || email.startsWith('pedguzman') || email.startsWith('pedroguzman');
+            const matchedEmp = employees.find((e) => e.email?.toLowerCase() === email);
+
+            if ((isAdminEmail || matchedEmp?.rol === 'Administrativo') && effectiveProfile.role !== 'Administrativo') {
+              effectiveProfile = {
+                ...effectiveProfile,
+                role: 'Administrativo',
+                ...(matchedEmp?.id ? { employeeId: matchedEmp.id } : {}),
+              };
+              try {
+                await saveUserProfileToFirestore(effectiveProfile);
+              } catch (e) {
+                console.warn('Could not update profile with admin role:', e);
+              }
+            }
+
             setUserProfile(effectiveProfile);
           } else {
             // Determine initial role

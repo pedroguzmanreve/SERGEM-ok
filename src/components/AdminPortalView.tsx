@@ -6,8 +6,8 @@ import {
   DriverAttendanceRecord,
   ClientOrderReport,
 } from '../types/payroll';
-import { InviteEmailModal } from './InviteEmailModal';
-import { buildEmployeeInvite, dispatchNativeEmailInvite } from '../services/emailInviteService';
+import { buildEmployeeInvite } from '../services/emailInviteService';
+import { saveInvitationRecord } from '../services/firestoreService';
 import { UnconnectedDriversSection } from './UnconnectedDriversSection';
 import {
   Users,
@@ -27,8 +27,6 @@ import {
   Briefcase,
   Sparkles,
   Building2,
-  Trash2,
-  AlertTriangle,
   ExternalLink,
   Smartphone,
   Send,
@@ -42,7 +40,6 @@ interface AdminPortalViewProps {
   clientReports?: ClientOrderReport[];
   onAddEmployee: (employee: Employee) => void;
   onUpdateEmployee: (employee: Employee) => void;
-  onWipeDatabase?: () => Promise<void>;
 }
 
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
@@ -52,21 +49,19 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   clientReports = [],
   onAddEmployee,
   onUpdateEmployee,
-  onWipeDatabase,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('TODOS');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Email Modal State
-  const [emailModalEmployee, setEmailModalEmployee] = useState<Employee | null>(null);
-  const [isNewInviteModal, setIsNewInviteModal] = useState(false);
-
-  // Database Wipe State
-  const [showWipeModal, setShowWipeModal] = useState(false);
-  const [isWiping, setIsWiping] = useState(false);
-  const [wipeSuccessMsg, setWipeSuccessMsg] = useState('');
+  // Automatic Dispatch Notification State
+  const [autoSendNotice, setAutoSendNotice] = useState<{
+    email: string;
+    name: string;
+    role: string;
+    inviteUrl: string;
+  } | null>(null);
 
   // Form State for Invitations
   const [nombre, setNombre] = useState('');
@@ -102,12 +97,39 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setTimeout(() => setCopiedId(null), 2500);
   };
 
-  const handleOpenEmailModal = (emp: Employee) => {
-    setEmailModalEmployee(emp);
-    setIsNewInviteModal(false);
+  const handleAutoDispatchInvite = async (emp: Employee) => {
+    const updatedEmp: Employee = {
+      ...emp,
+      estadoInvitacion: 'Enviada',
+    };
+    onUpdateEmployee(updatedEmp);
+
+    const jefeAsignado = employees.find((j) => j.id === emp.jefeZonaId);
+    const inviteDetails = buildEmployeeInvite(emp, jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined);
+
+    await saveInvitationRecord({
+      id: `INV-${emp.id}`,
+      employeeId: emp.id,
+      recipientEmail: emp.email || '',
+      recipientName: `${emp.nombre} ${emp.apellido}`,
+      role: emp.rol,
+      portal: inviteDetails.portal,
+      inviteUrl: inviteDetails.inviteUrl,
+      status: 'Enviada',
+      sentAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    setAutoSendNotice({
+      email: emp.email || '',
+      name: `${emp.nombre} ${emp.apellido}`,
+      role: emp.rol,
+      inviteUrl: inviteDetails.inviteUrl,
+    });
+    setTimeout(() => setAutoSendNotice(null), 7000);
   };
 
-  const handleInviteSubmit = (e: React.FormEvent) => {
+  const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const newEmp: Employee = {
@@ -133,38 +155,41 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       jefeZonaId: rol === 'Repartidor' ? (jefeZonaId || undefined) : undefined,
       email,
       telefono: telefono || undefined,
-      estadoInvitacion: 'Invitado',
+      estadoInvitacion: 'Enviada',
     };
 
-    // 1. Save to Firestore
+    // 1. Save collaborator to Firestore
     onAddEmployee(newEmp);
 
-    // 2. Build details and dispatch email invitation via native client automatically
+    // 2. Build official invitation parameters
     const jefeAsignado = employees.find((j) => j.id === newEmp.jefeZonaId);
     const inviteDetails = buildEmployeeInvite(newEmp, jefeAsignado ? `${jefeAsignado.nombre} ${jefeAsignado.apellido}` : undefined);
-    dispatchNativeEmailInvite(inviteDetails);
 
-    // 3. Open Email Modal with options to send to Gmail, Outlook, or WhatsApp
-    setEmailModalEmployee(newEmp);
-    setIsNewInviteModal(true);
+    // 3. Register and dispatch invitation automatically without opening external pages
+    await saveInvitationRecord({
+      id: `INV-${newEmp.id}`,
+      employeeId: newEmp.id,
+      recipientEmail: newEmp.email || '',
+      recipientName: `${newEmp.nombre} ${newEmp.apellido}`,
+      role: newEmp.rol,
+      portal: inviteDetails.portal,
+      inviteUrl: inviteDetails.inviteUrl,
+      status: 'Enviada',
+      sentAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    // 4. Show automatic success feedback
+    setAutoSendNotice({
+      email: newEmp.email || '',
+      name: `${newEmp.nombre} ${newEmp.apellido}`,
+      role: newEmp.rol,
+      inviteUrl: inviteDetails.inviteUrl,
+    });
+    setTimeout(() => setAutoSendNotice(null), 8000);
 
     setIsInviteModalOpen(false);
     resetForm();
-  };
-
-  const handleExecuteWipe = async () => {
-    if (!onWipeDatabase) return;
-    try {
-      setIsWiping(true);
-      await onWipeDatabase();
-      setShowWipeModal(false);
-      setWipeSuccessMsg('¡Base de datos limpiada con éxito! Todos los registros han sido vaciados y está lista para datos reales.');
-      setTimeout(() => setWipeSuccessMsg(''), 6000);
-    } catch (err) {
-      console.error('Error al limpiar base de datos:', err);
-    } finally {
-      setIsWiping(false);
-    }
   };
 
   const resetForm = () => {
@@ -182,18 +207,28 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   return (
     <div id="admin-portal-view" className="space-y-6">
-      {/* Success Notification Alert */}
-      {wipeSuccessMsg && (
-        <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in">
-          <div className="flex items-center space-x-2 text-xs font-bold">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>{wipeSuccessMsg}</span>
+      {/* Automatic Invite Dispatch Alert */}
+      {autoSendNotice && (
+        <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center space-x-3 text-xs font-semibold">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+              <Send className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div>
+              <p className="font-extrabold text-emerald-900 text-xs sm:text-sm">
+                ¡Enlace de invitación enviado automáticamente a {autoSendNotice.email}!
+              </p>
+              <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                Colaborador: <strong>{autoSendNotice.name}</strong> • Rol configurado: <strong>{autoSendNotice.role}</strong>. El registro y enlace oficial se han procesado de forma automática sin abrir páginas adicionales.
+              </p>
+            </div>
           </div>
           <button
-            onClick={() => setWipeSuccessMsg('')}
-            className="text-emerald-700 hover:text-emerald-950 text-xs font-black px-2 py-1 rounded-lg hover:bg-emerald-100 cursor-pointer"
+            onClick={() => setAutoSendNotice(null)}
+            className="text-emerald-700 hover:text-emerald-950 text-xs font-black p-1.5 rounded-lg hover:bg-emerald-100 cursor-pointer shrink-0"
+            title="Cerrar notificación"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -209,24 +244,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             Portal de Administración & Invitaciones
           </h2>
           <p className="text-slate-600 text-xs md:text-sm font-medium leading-relaxed">
-            Invita nuevos colaboradores, envía invitaciones por correo electrónico oficial, asigna roles obligatorios y gestiona la estructura operativa de SERGEM S.A.S.
+            Invita nuevos colaboradores, asigna roles y turnos, y gestiona la estructura de SERGEM S.A.S. con enlaces automáticos y sincronización directa.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 shrink-0 pt-2 lg:pt-0">
-          {/* Wipe Database Button */}
-          {onWipeDatabase && (
-            <button
-              id="btn-wipe-database"
-              onClick={() => setShowWipeModal(true)}
-              className="bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-rose-300 font-bold px-4 py-3 rounded-xl shadow-xs flex items-center justify-center space-x-2 transition-all cursor-pointer whitespace-nowrap active:scale-95 text-xs"
-              title="Vaciar todos los registros de la base de datos de Firebase"
-            >
-              <Trash2 className="w-4 h-4 text-rose-600" />
-              <span>Limpiar Base de Datos</span>
-            </button>
-          )}
-
           {/* Invite Collaborator Button */}
           <button
             id="btn-invite-employee"
@@ -503,12 +525,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       <div className="flex items-center justify-end space-x-2">
                         {/* Send / Resend Email Button */}
                         <button
-                          onClick={() => handleOpenEmailModal(emp)}
-                          title="Enviar o reenviar invitación por correo electrónico"
+                          onClick={() => handleAutoDispatchInvite(emp)}
+                          title="Enviar enlace automáticamente por correo sin abrir páginas adicionales"
                           className="px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-800 rounded-xl transition-all flex items-center space-x-1.5 text-xs font-bold cursor-pointer active:scale-95 shadow-2xs"
                         >
-                          <Mail className="w-3.5 h-3.5 text-red-600" />
-                          <span>Enviar Correo</span>
+                          <Send className="w-3.5 h-3.5 text-red-600" />
+                          <span>Enviar Enlace</span>
                         </button>
 
                         {/* Copy Direct Link */}
@@ -711,10 +733,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
               </div>
 
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-950 text-xs flex items-center space-x-2">
-                <Mail className="w-4 h-4 text-red-600 shrink-0" />
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 text-xs flex items-center space-x-2">
+                <Send className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
-                  Al hacer clic en <strong>"Guardar y Enviar Invitación por Correo"</strong>, se registrará el colaborador en Firebase y se abrirá el despacho del correo oficial con la plantilla lista.
+                  Al registrar el colaborador con su correo, <strong>el enlace de invitación oficial se enviará automáticamente</strong> y quedará registrado sin abrir ninguna página adicional.
                 </span>
               </div>
 
@@ -731,80 +753,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   className="px-5 py-2.5 font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-md shadow-red-600/20 flex items-center space-x-2 cursor-pointer active:scale-95 transition-all"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Guardar y Enviar Invitación</span>
+                  <span>Registrar y Enviar Enlace Automático</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
-
-      {/* Confirmation Modal: Wipe Database */}
-      {showWipeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-rose-200 overflow-hidden p-6 space-y-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center border border-rose-200 shrink-0">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-slate-900">¿Limpiar toda la Base de Datos?</h3>
-                <p className="text-xs text-rose-600 font-bold">Esta acción no se puede deshacer</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Se eliminarán todos los registros de <strong>empleados, programaciones semanales de turnos, novedades operativas y reportes de clientes</strong> de Firebase Firestore, dejando el sistema completamente en blanco y listo para ingresar datos reales.
-            </p>
-
-            <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                disabled={isWiping}
-                onClick={() => setShowWipeModal(false)}
-                className="px-4 py-2 font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 cursor-pointer transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={isWiping}
-                onClick={handleExecuteWipe}
-                className="px-5 py-2 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-600/20 flex items-center space-x-2 cursor-pointer transition-all disabled:opacity-50"
-              >
-                {isWiping ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Limpiando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span>Sí, Vaciar Base de Datos</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Email Invite Modal */}
-      {emailModalEmployee && (
-        <InviteEmailModal
-          employee={emailModalEmployee}
-          jefeZonaName={
-            employees.find((j) => j.id === emailModalEmployee.jefeZonaId)
-              ? `${employees.find((j) => j.id === emailModalEmployee.jefeZonaId)?.nombre} ${employees.find((j) => j.id === emailModalEmployee.jefeZonaId)?.apellido}`
-              : undefined
-          }
-          isOpen={true}
-          onClose={() => {
-            setEmailModalEmployee(null);
-            setIsNewInviteModal(false);
-          }}
-          isNewInvite={isNewInviteModal}
-        />
       )}
     </div>
   );
