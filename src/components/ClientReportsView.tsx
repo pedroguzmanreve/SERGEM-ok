@@ -5,6 +5,8 @@ import autoTable from 'jspdf-autotable';
 import { ClientOrderReport, Employee, WeeklySchedule, CompanySettings, CompanyClient } from '../types/payroll';
 import { calculateHoursBreakdown, isHolidayOrSundayInColombia } from '../utils/colombianLaborLaw';
 import { buildCallLink } from '../utils/attendanceService';
+import { BulkClientUploadContent } from './BulkClientUploadModal';
+import { downloadClientExcelTemplate } from '../utils/clientExcelService';
 import {
   Building2,
   Truck,
@@ -84,6 +86,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
 
   // Clients state & modal
   const [clientModalOpen, setClientModalOpen] = useState(false);
+  const [clientModalTab, setClientModalTab] = useState<'individual' | 'bulk'>('individual');
   const [editingClient, setEditingClient] = useState<CompanyClient | null>(null);
   const [clientFormNombre, setClientFormNombre] = useState('');
   const [clientFormNit, setClientFormNit] = useState('');
@@ -785,6 +788,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
     setClientFormTarifa(12500);
     setClientFormObservaciones('');
     setClientFormActivo(true);
+    setClientModalTab('individual');
     setClientModalOpen(true);
   };
 
@@ -801,6 +805,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
     setClientFormTarifa(cli.tarifaHoraBase ?? 12500);
     setClientFormObservaciones(cli.observaciones || '');
     setClientFormActivo(cli.activo);
+    setClientModalTab('individual');
     setClientModalOpen(true);
   };
 
@@ -1697,204 +1702,306 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
       {/* ================= MODAL: CREAR / EDITAR CLIENTE ================= */}
       {clientModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-fade-in">
+          <div
+            className={`bg-white rounded-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-fade-in transition-all duration-200 flex flex-col max-h-[90vh] ${
+              clientModalTab === 'bulk' && !editingClient ? 'max-w-4xl' : 'max-w-xl'
+            }`}
+          >
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6 flex items-center justify-between">
+            <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 bg-white/10 rounded-2xl">
                   <Building2 className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <h3 className="text-lg font-black tracking-tight">
-                    {editingClient ? 'Editar Cliente Corporativo' : 'Crear Nuevo Cliente Corporativo'}
+                    {editingClient
+                      ? 'Editar Cliente Corporativo'
+                      : clientModalTab === 'bulk'
+                      ? 'Carga Masiva de Clientes por Excel'
+                      : 'Crear Nuevo Cliente Corporativo'}
                   </h3>
                   <p className="text-xs text-red-100 font-medium">
                     SERGEM Mensajería y Logística S.A.S. • Valle del Cauca
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => setClientModalOpen(false)}
-                className="text-white/80 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center space-x-2">
+                {!editingClient && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      downloadClientExcelTemplate();
+                    }}
+                    className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 cursor-pointer active:scale-95"
+                    title="Descargar plantilla Excel oficial para importar clientes (.xlsx)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Descargar Plantilla Excel (.xlsx)</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setClientModalOpen(false)}
+                  className="text-white/80 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Modal Form */}
-            <form onSubmit={handleSaveClientForm} className="p-6 space-y-4 text-xs font-semibold text-slate-700">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Nombre de la Empresa */}
-                <div className="md:col-span-2">
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Nombre o Razón Social del Cliente *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: ALKOSTO CALI, TCC LOGÍSTICA, COSERVICIOS..."
-                    value={clientFormNombre}
-                    onChange={(e) => setClientFormNombre(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* NIT / RUT */}
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    NIT / Identificación Tributaria
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 890.900.608-9"
-                    value={clientFormNit}
-                    onChange={(e) => setClientFormNit(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Ciudad */}
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Ciudad / Sede Operativa
-                  </label>
-                  <select
-                    value={clientFormCiudad}
-                    onChange={(e) => setClientFormCiudad(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50 cursor-pointer"
+            {/* Pestañas de Selección: Registro Individual vs Carga Masiva (Solo en modo creación) */}
+            {!editingClient && (
+              <div className="bg-slate-50 border-b border-slate-200 px-6 pt-3 flex items-center justify-between shrink-0">
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setClientModalTab('individual')}
+                    className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all flex items-center space-x-2 border-b-2 cursor-pointer ${
+                      clientModalTab === 'individual'
+                        ? 'bg-white text-red-700 border-red-600 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-100/60'
+                    }`}
                   >
-                    <option value="Cali">Cali (Valle)</option>
-                    <option value="Yumbo">Yumbo (Valle)</option>
-                    <option value="Palmira">Palmira (Valle)</option>
-                    <option value="Jamundí">Jamundí (Valle)</option>
-                    <option value="Buga">Buga (Valle)</option>
-                    <option value="Tuluá">Tuluá (Valle)</option>
-                    <option value="Buenaventura">Buenaventura (Valle)</option>
-                    <option value="Bogotá D.C.">Bogotá D.C.</option>
-                    <option value="Medellín">Medellín (Antioquia)</option>
-                  </select>
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Registro Individual</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientModalTab('bulk')}
+                    className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all flex items-center space-x-2 border-b-2 cursor-pointer ${
+                      clientModalTab === 'bulk'
+                        ? 'bg-white text-red-700 border-red-600 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800 border-transparent hover:bg-slate-100/60'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Carga Masiva (Excel)</span>
+                    <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-emerald-100 text-emerald-800 rounded-full font-extrabold">
+                      Lote
+                    </span>
+                  </button>
                 </div>
 
-                {/* Dirección Principal */}
-                <div className="md:col-span-2">
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Dirección de Muelle / Sede de Despacho
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Av. Pasoancho # 80-120, Bodega 4"
-                    value={clientFormDireccion}
-                    onChange={(e) => setClientFormDireccion(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Nombre de Contacto / Supervisor */}
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Nombre del Supervisor / Coordinador
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Liceth Morales / Ing. Carlos Ruiz"
-                    value={clientFormContactoNombre}
-                    onChange={(e) => setClientFormContactoNombre(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Teléfono de Contacto */}
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Teléfono Celular (Llamadas / WhatsApp)
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="Ej: 3154567890"
-                    value={clientFormContactoTelefono}
-                    onChange={(e) => setClientFormContactoTelefono(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Correo Electrónico */}
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Correo Electrónico de Contacto
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="Ej: logistica@cliente.com"
-                    value={clientFormContactoEmail}
-                    onChange={(e) => setClientFormContactoEmail(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Tarifa Base por Hora */}
-                <div>
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Tarifa Base por Hora ($ COP)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="500"
-                    placeholder="Ej: 12500"
-                    value={clientFormTarifa}
-                    onChange={(e) => setClientFormTarifa(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Observaciones Operativas */}
-                <div className="md:col-span-2">
-                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
-                    Observaciones Operativas / Requisitos Especiales
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Requisitos de EPP, horarios de descargue, condiciones de entrega..."
-                    value={clientFormObservaciones}
-                    onChange={(e) => setClientFormObservaciones(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50 resize-none"
-                  />
-                </div>
-
-                {/* Estado Activo */}
-                <div className="md:col-span-2 flex items-center space-x-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="client-form-activo"
-                    checked={clientFormActivo}
-                    onChange={(e) => setClientFormActivo(e.target.checked)}
-                    className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
-                  />
-                  <label htmlFor="client-form-activo" className="text-xs font-bold text-slate-700 cursor-pointer">
-                    Cuenta Activa (Disponible para reportes de operaciones y asignación de turnos)
-                  </label>
+                <div className="sm:hidden pb-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      downloadClientExcelTemplate();
+                    }}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[10px] font-bold cursor-pointer"
+                    title="Descargar Plantilla Excel (.xlsx)"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Plantilla (.xlsx)</span>
+                  </button>
                 </div>
               </div>
+            )}
 
-              {/* Form Action Buttons */}
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setClientModalOpen(false)}
-                  className="px-4 py-2 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs cursor-pointer transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  id="btn-submit-client"
-                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center space-x-2"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>{editingClient ? 'Guardar Cambios' : 'Crear Cliente'}</span>
-                </button>
-              </div>
-            </form>
+            {/* Cuerpo del Modal: Vista de Carga Masiva o Formulario Individual */}
+            <div className="overflow-y-auto flex-1">
+              {clientModalTab === 'bulk' && !editingClient ? (
+                <div className="p-6">
+                  <BulkClientUploadContent
+                    existingClients={effectiveClients}
+                    onSaveClient={onSaveClient}
+                    onCompleteOrClose={() => setClientModalOpen(false)}
+                  />
+                </div>
+              ) : (
+                <form onSubmit={handleSaveClientForm} className="p-6 space-y-4 text-xs font-semibold text-slate-700">
+                  {!editingClient && (
+                    <div className="p-3 bg-red-50/70 border border-red-200 rounded-2xl flex items-center justify-between text-xs text-red-900">
+                      <div className="flex items-center space-x-2">
+                        <FileSpreadsheet className="w-4 h-4 text-red-600 shrink-0" />
+                        <span>¿Tienes varias cuentas corporativas para registrar?</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setClientModalTab('bulk')}
+                        className="px-2.5 py-1 bg-white border border-red-300 text-red-700 font-bold rounded-lg text-[11px] hover:bg-red-100 cursor-pointer shrink-0 ml-3"
+                      >
+                        Usar Carga Masiva →
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Nombre de la Empresa */}
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Nombre o Razón Social del Cliente *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: ALKOSTO CALI, TCC LOGÍSTICA, COSERVICIOS..."
+                        value={clientFormNombre}
+                        onChange={(e) => setClientFormNombre(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* NIT / RUT */}
+                    <div>
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        NIT / Identificación Tributaria
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: 890.900.608-9"
+                        value={clientFormNit}
+                        onChange={(e) => setClientFormNit(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* Ciudad */}
+                    <div>
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Ciudad / Sede Operativa
+                      </label>
+                      <select
+                        value={clientFormCiudad}
+                        onChange={(e) => setClientFormCiudad(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50 cursor-pointer"
+                      >
+                        <option value="Cali">Cali (Valle)</option>
+                        <option value="Yumbo">Yumbo (Valle)</option>
+                        <option value="Palmira">Palmira (Valle)</option>
+                        <option value="Jamundí">Jamundí (Valle)</option>
+                        <option value="Buga">Buga (Valle)</option>
+                        <option value="Tuluá">Tuluá (Valle)</option>
+                        <option value="Buenaventura">Buenaventura (Valle)</option>
+                        <option value="Bogotá D.C.">Bogotá D.C.</option>
+                        <option value="Medellín">Medellín (Antioquia)</option>
+                      </select>
+                    </div>
+
+                    {/* Dirección Principal */}
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Dirección de Muelle / Sede de Despacho
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Av. Pasoancho # 80-120, Bodega 4"
+                        value={clientFormDireccion}
+                        onChange={(e) => setClientFormDireccion(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* Nombre de Contacto / Supervisor */}
+                    <div>
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Nombre del Supervisor / Coordinador
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: Liceth Morales / Ing. Carlos Ruiz"
+                        value={clientFormContactoNombre}
+                        onChange={(e) => setClientFormContactoNombre(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* Teléfono de Contacto */}
+                    <div>
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Teléfono Celular (Llamadas / WhatsApp)
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="Ej: 3154567890"
+                        value={clientFormContactoTelefono}
+                        onChange={(e) => setClientFormContactoTelefono(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* Correo Electrónico */}
+                    <div>
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Correo Electrónico de Contacto
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="Ej: logistica@cliente.com"
+                        value={clientFormContactoEmail}
+                        onChange={(e) => setClientFormContactoEmail(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* Tarifa Base por Hora */}
+                    <div>
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Tarifa Base por Hora ($ COP)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="500"
+                        placeholder="Ej: 12500"
+                        value={clientFormTarifa}
+                        onChange={(e) => setClientFormTarifa(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                      />
+                    </div>
+
+                    {/* Observaciones Operativas */}
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                        Observaciones Operativas / Requisitos Especiales
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="Requisitos de EPP, horarios de descargue, condiciones de entrega..."
+                        value={clientFormObservaciones}
+                        onChange={(e) => setClientFormObservaciones(e.target.value)}
+                        className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50 resize-none"
+                      />
+                    </div>
+
+                    {/* Estado Activo */}
+                    <div className="md:col-span-2 flex items-center space-x-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="client-form-activo"
+                        checked={clientFormActivo}
+                        onChange={(e) => setClientFormActivo(e.target.checked)}
+                        className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                      />
+                      <label htmlFor="client-form-activo" className="text-xs font-bold text-slate-700 cursor-pointer">
+                        Cuenta Activa (Disponible para reportes de operaciones y asignación de turnos)
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Form Action Buttons */}
+                  <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setClientModalOpen(false)}
+                      className="px-4 py-2 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs cursor-pointer transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      id="btn-submit-client"
+                      className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center space-x-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{editingClient ? 'Guardar Cambios' : 'Crear Cliente'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

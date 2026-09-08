@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import nodemailer, { type Transporter } from 'nodemailer';
 import dotenv from 'dotenv';
@@ -268,6 +269,31 @@ async function startServer() {
         message: `Error al intentar despachar el correo: ${errMsg}`,
       });
     }
+  });
+
+  // Explicit download routes for Excel templates to guarantee proper MIME type and force attachment download
+  const excelTemplates = [
+    'Plantilla_Registro_Clientes_SERGEM.xlsx',
+    'Plantilla_Registro_Colaboradores_SERGEM.xlsx',
+    'Plantilla_Carga_Masiva_Turnos_SERGEM.xlsx',
+  ];
+
+  excelTemplates.forEach((templateName) => {
+    app.get(`/${templateName}`, (req: Request, res: Response, next) => {
+      const candidatePaths = [
+        path.join(process.cwd(), 'public', templateName),
+        path.join(process.cwd(), 'dist', templateName),
+        path.join(process.cwd(), templateName),
+      ];
+
+      const foundPath = candidatePaths.find((p) => fs.existsSync(p));
+      if (foundPath) {
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${templateName}"`);
+        return res.sendFile(foundPath);
+      }
+      return next();
+    });
   });
 
   // Vite middleware for development

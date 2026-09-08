@@ -14,6 +14,7 @@ import {
 import { saveInvitationRecord, queueFirestoreMail } from '../services/firestoreService';
 import { UnconnectedDriversSection } from './UnconnectedDriversSection';
 import { BulkInviteContent } from './BulkInviteModal';
+import { downloadCollaboratorExcelTemplate } from '../utils/clientExcelService';
 
 import {
   Users,
@@ -784,16 +785,19 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
               <div className="flex items-center space-x-2">
                 {/* Download Official Template inside the Modal */}
-                <a
+                <button
+                  type="button"
                   id="modal-link-download-template"
-                  href="/Plantilla_Registro_Colaboradores_SERGEM.xlsx"
-                  download="Plantilla_Registro_Colaboradores_SERGEM.xlsx"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    downloadCollaboratorExcelTemplate();
+                  }}
                   className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/30 text-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap active:scale-95"
-                  title="Descargar plantilla de Excel con ejemplos para Repartidor, Administrativo y Jefe de Zona"
+                  title="Descargar plantilla de Excel con ejemplos para Repartidor, Administrativo y Jefe de Zona (.xlsx)"
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Descargar Plantilla Excel</span>
-                </a>
+                  <span>Descargar Plantilla Excel (.xlsx)</span>
+                </button>
 
                 <button
                   onClick={() => setIsInviteModalOpen(false)}
@@ -837,15 +841,19 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </button>
               </div>
 
-              {/* Mobile link for template */}
-              <a
-                href="/Plantilla_Registro_Colaboradores_SERGEM.xlsx"
-                download="Plantilla_Registro_Colaboradores_SERGEM.xlsx"
-                className="sm:hidden pb-3 text-xs font-bold text-emerald-700 flex items-center space-x-1 hover:text-emerald-800"
+              {/* Mobile button for template */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  downloadCollaboratorExcelTemplate();
+                }}
+                className="sm:hidden pb-3 text-xs font-bold text-emerald-700 flex items-center space-x-1 hover:text-emerald-800 cursor-pointer"
+                title="Descargar Plantilla Excel (.xlsx)"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Plantilla</span>
-              </a>
+                <span>Plantilla (.xlsx)</span>
+              </button>
             </div>
 
             {/* Tab 1: Formulario Individual */}

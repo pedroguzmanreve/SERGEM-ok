@@ -17,6 +17,7 @@ import {
   saveInvitationRecord,
   queueFirestoreMail,
 } from '../services/firestoreService';
+import { downloadCollaboratorExcelTemplate } from '../utils/clientExcelService';
 import {
   X,
   Upload,
@@ -587,14 +588,18 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
                 </p>
               </div>
             </div>
-            <a
-              href="/Plantilla_Registro_Colaboradores_SERGEM.xlsx"
-              download="Plantilla_Registro_Colaboradores_SERGEM.xlsx"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                downloadCollaboratorExcelTemplate();
+              }}
               className="inline-flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95 shrink-0"
+              title="Descargar Plantilla Oficial de Colaboradores Excel (.xlsx)"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Descargar Plantilla Excel</span>
-            </a>
+              <span>Descargar Plantilla Excel (.xlsx)</span>
+            </button>
           </div>
 
           {/* Zona Drag & Drop */}
