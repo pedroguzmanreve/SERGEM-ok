@@ -483,6 +483,15 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
 
     setProcessedResults(results);
     setStep('completed');
+
+    // Descarga automática del reporte oficial en Excel al finalizar la carga
+    try {
+      setTimeout(() => {
+        generateExcelReport(results);
+      }, 350);
+    } catch (e) {
+      console.warn('Descarga automática de reporte diferida:', e);
+    }
   };
 
   const handleCopySingleLink = (inviteUrl: string, id: string) => {
@@ -522,38 +531,34 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
     setTimeout(() => setAllCopiedNotice(false), 3000);
   };
 
-  const handleDownloadGeneratedLinksExcel = () => {
-    if (processedResults.length === 0) return;
+  const generateExcelReport = (data: ProcessedInviteResult[]) => {
+    if (data.length === 0) return;
 
     const exportData = [
       [
         'Cédula',
-        'Nombres',
-        'Apellidos',
-        'Rol en Plataforma',
+        'Nombre Completo',
+        'Rol Asignado (Repartidor, Administrativo o Jefe de Zona)',
         'Cargo',
-        'Departamento',
         'Correo Electrónico',
-        'Teléfono',
+        'Teléfono / Celular',
         'Placa Vehículo',
-        'Portal Asignado',
-        'Enlace de Invitación Oficial',
-        'Estado de Envío',
+        'Ciudad / Sede',
+        'Enlace de Invitación Oficial (la URL completa y directa que debes enviarle a cada uno)',
+        'Estado del Envío / Creación',
         'Fecha de Generación'
       ],
-      ...processedResults.map((r) => [
+      ...data.map((r) => [
         r.employee.cedula,
-        r.employee.nombre,
-        r.employee.apellido,
+        `${r.employee.nombre} ${r.employee.apellido}`.trim(),
         r.employee.rol,
-        r.employee.cargo,
-        r.employee.departamento,
-        r.employee.email || '',
-        r.employee.telefono || '',
+        r.employee.cargo || 'No especificado',
+        r.employee.email || 'Sin correo',
+        r.employee.telefono || 'Sin registrar',
         r.employee.placaVehiculo || 'N/A',
-        r.inviteDetails.portalDisplayName,
+        r.employee.ciudad || 'Cali',
         r.inviteDetails.inviteUrl,
-        r.emailSuccess ? 'Despachado por Correo' : 'Enlace Listo (Pendiente SMTP)',
+        r.emailSuccess ? 'Invitación Notificada por Correo' : 'Enlace Oficial Generado Exitosamente',
         new Date().toLocaleString('es-CO')
       ])
     ];
@@ -562,23 +567,25 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
     const ws = XLSX.utils.aoa_to_sheet(exportData);
 
     ws['!cols'] = [
-      { wch: 15 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 30 },
-      { wch: 25 },
-      { wch: 32 },
-      { wch: 16 },
-      { wch: 15 },
-      { wch: 35 },
-      { wch: 70 },
-      { wch: 25 },
-      { wch: 20 }
+      { wch: 16 }, // Cédula
+      { wch: 32 }, // Nombre Completo
+      { wch: 28 }, // Rol Asignado
+      { wch: 35 }, // Cargo
+      { wch: 35 }, // Correo Electrónico
+      { wch: 20 }, // Teléfono / Celular
+      { wch: 16 }, // Placa Vehículo
+      { wch: 18 }, // Ciudad / Sede
+      { wch: 85 }, // Enlace de Invitación Oficial
+      { wch: 35 }, // Estado del Envío / Creación
+      { wch: 22 }  // Fecha de Generación
     ];
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Enlaces_Invitacion_SERGEM');
+    XLSX.utils.book_append_sheet(wb, ws, 'Reporte_Invitaciones_SERGEM');
     XLSX.writeFile(wb, `Reporte_Enlaces_Invitacion_SERGEM_${Date.now()}.xlsx`);
+  };
+
+  const handleDownloadGeneratedLinksExcel = () => {
+    generateExcelReport(processedResults);
   };
 
   return (
@@ -887,7 +894,7 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
                   ¡Carga Masiva e Invitaciones Procesadas con Éxito!
                 </h4>
                 <p className="text-xs text-emerald-800 font-medium mt-0.5">
-                  Se han registrado <strong>{processedResults.length}</strong> colaboradores y generado sus enlaces oficiales correspondientes para ingresar a su portal asignado.
+                  Se han registrado <strong>{processedResults.length}</strong> colaboradores y se ha <strong>descargado automáticamente el Reporte en Excel</strong> con todos los enlaces oficiales.
                 </p>
               </div>
             </div>
