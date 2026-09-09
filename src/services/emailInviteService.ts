@@ -20,7 +20,12 @@ export function getPortalForRole(role: string): 'driver-portal' | 'zone-chief' |
   if (role === 'Repartidor') {
     return 'driver-portal';
   }
-  if (role === 'Jefe de Zona' || role === 'Jefe de Operaciones') {
+  if (
+    role === 'Jefe de Zona' || 
+    role === 'Jefe de Operaciones' || 
+    role === 'Jefe Inmediato' || 
+    role === 'Coordinador'
+  ) {
     return 'zone-chief';
   }
   return 'admin-portal';
@@ -33,8 +38,17 @@ export function getPortalDisplayName(role: string): string {
   if (role === 'Repartidor') {
     return 'Portal del Repartidor (Turnos, Rutas & Desprendibles)';
   }
-  if (role === 'Jefe de Zona' || role === 'Jefe de Operaciones') {
-    return 'Portal de Jefatura de Zona (Programación & Novedades)';
+  if (role === 'Jefe de Zona' || role === 'Jefe de Operaciones' || role === 'Jefe Inmediato') {
+    return 'Portal de Jefatura & Supervisión (Programación & Novedades)';
+  }
+  if (role === 'Coordinador') {
+    return 'Portal de Coordinación Operacional';
+  }
+  if (role === 'Analista') {
+    return 'Portal de Análisis & Administración';
+  }
+  if (role === 'Auxiliar') {
+    return 'Portal Administrativo y Auxiliar';
   }
   return 'Portal de Administración (Control General & Nómina)';
 }

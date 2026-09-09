@@ -76,9 +76,24 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
               const urlEmpId = urlParams.get('emp_id');
 
               let invitedRole: AppRole | null = null;
-              if (urlRole === 'Administrativo' || urlPortal === 'admin-portal') invitedRole = 'Administrativo';
-              else if (urlRole === 'Jefe de Zona' || urlRole === 'Jefe de Operaciones' || urlPortal === 'zone-chief') invitedRole = 'Jefe de Zona';
-              else if (urlRole === 'Repartidor' || urlPortal === 'driver-portal') invitedRole = 'Repartidor';
+              if (
+                urlRole === 'Administrativo' || 
+                urlRole === 'Analista' || 
+                urlRole === 'Auxiliar' || 
+                urlPortal === 'admin-portal'
+              ) {
+                invitedRole = 'Administrativo';
+              } else if (
+                urlRole === 'Jefe de Zona' || 
+                urlRole === 'Jefe de Operaciones' || 
+                urlRole === 'Jefe Inmediato' || 
+                urlRole === 'Coordinador' || 
+                urlPortal === 'zone-chief'
+              ) {
+                invitedRole = 'Jefe de Zona';
+              } else if (urlRole === 'Repartidor' || urlPortal === 'driver-portal') {
+                invitedRole = 'Repartidor';
+              }
 
               if (invitedRole && existingProfile.role !== invitedRole) {
                 effectiveProfile = {
@@ -126,9 +141,24 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
               const r = urlParams.get('role');
               const p = urlParams.get('portal');
               urlEmpId = urlParams.get('emp_id');
-              if (r === 'Administrativo' || p === 'admin-portal') urlRole = 'Administrativo';
-              else if (r === 'Jefe de Zona' || r === 'Jefe de Operaciones' || p === 'zone-chief') urlRole = 'Jefe de Zona';
-              else if (r === 'Repartidor' || p === 'driver-portal') urlRole = 'Repartidor';
+              if (
+                r === 'Administrativo' || 
+                r === 'Analista' || 
+                r === 'Auxiliar' || 
+                p === 'admin-portal'
+              ) {
+                urlRole = 'Administrativo';
+              } else if (
+                r === 'Jefe de Zona' || 
+                r === 'Jefe de Operaciones' || 
+                r === 'Jefe Inmediato' || 
+                r === 'Coordinador' || 
+                p === 'zone-chief'
+              ) {
+                urlRole = 'Jefe de Zona';
+              } else if (r === 'Repartidor' || p === 'driver-portal') {
+                urlRole = 'Repartidor';
+              }
             }
 
             // Check if matches an existing employee or invite emp_id
@@ -141,9 +171,18 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
               if (isAdminEmail) {
                 initialRole = 'Administrativo';
               } else if (matchedEmp) {
-                if (matchedEmp.rol === 'Jefe de Zona' || matchedEmp.rol === 'Jefe de Operaciones') {
+                if (
+                  matchedEmp.rol === 'Jefe de Zona' || 
+                  matchedEmp.rol === 'Jefe de Operaciones' || 
+                  matchedEmp.rol === 'Jefe Inmediato' || 
+                  matchedEmp.rol === 'Coordinador'
+                ) {
                   initialRole = 'Jefe de Zona';
-                } else if (matchedEmp.rol === 'Administrativo') {
+                } else if (
+                  matchedEmp.rol === 'Administrativo' || 
+                  matchedEmp.rol === 'Analista' || 
+                  matchedEmp.rol === 'Auxiliar'
+                ) {
                   initialRole = 'Administrativo';
                 } else {
                   initialRole = 'Repartidor';

@@ -11,7 +11,15 @@ export type ContractType = 'Término Indefinido' | 'Término Fijo' | 'Obra o Lab
 
 export type RiskLevel = 1 | 2 | 3 | 4 | 5;
 
-export type UserRole = 'Administrativo' | 'Jefe de Zona' | 'Jefe de Operaciones' | 'Repartidor';
+export type UserRole = 
+  | 'Administrativo' 
+  | 'Jefe de Zona' 
+  | 'Jefe de Operaciones' 
+  | 'Jefe Inmediato'
+  | 'Coordinador'
+  | 'Analista'
+  | 'Auxiliar'
+  | 'Repartidor';
 
 export type AppRole = 'Administrativo' | 'Jefe de Zona' | 'Repartidor';
 

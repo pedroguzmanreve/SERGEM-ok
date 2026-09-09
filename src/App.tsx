@@ -520,7 +520,13 @@ function AppContent({
     if (portal === 'driver-portal' || role === 'Repartidor') {
       targetPortal = 'driver-portal';
       targetRole = 'Repartidor';
-    } else if (portal === 'zone-chief' || role === 'Jefe de Zona' || role === 'Jefe de Operaciones') {
+    } else if (
+      portal === 'zone-chief' || 
+      role === 'Jefe de Zona' || 
+      role === 'Jefe de Operaciones' ||
+      role === 'Jefe Inmediato' ||
+      role === 'Coordinador'
+    ) {
       targetPortal = 'zone-chief';
       targetRole = 'Jefe de Zona';
     } else if (portal === 'client-report') {

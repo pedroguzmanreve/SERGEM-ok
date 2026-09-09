@@ -222,8 +222,16 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
           rol = 'Administrativo';
         } else if (rawRolStr.includes('jefe') && rawRolStr.includes('operacion')) {
           rol = 'Jefe de Operaciones';
+        } else if (rawRolStr.includes('jefe') && rawRolStr.includes('inmediat')) {
+          rol = 'Jefe Inmediato';
         } else if (rawRolStr.includes('jefe') || rawRolStr.includes('zona')) {
           rol = 'Jefe de Zona';
+        } else if (rawRolStr.includes('coordinad')) {
+          rol = 'Coordinador';
+        } else if (rawRolStr.includes('analist')) {
+          rol = 'Analista';
+        } else if (rawRolStr.includes('auxiliar')) {
+          rol = 'Auxiliar';
         } else {
           rol = 'Repartidor';
         }
@@ -246,16 +254,23 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
           ? rawPlaca
           : undefined;
 
-        // Vincular Jefe de Zona si es repartidor
+        // Vincular Jefe Inmediato / Jefe de Zona si es repartidor o auxiliar
         let jefeZonaId: string | undefined = undefined;
         let jefeZonaName: string | undefined = undefined;
 
-        if (rol === 'Repartidor' && rawJefe && rawJefe !== 'N/A' && rawJefe !== '-') {
+        if ((rol === 'Repartidor' || rol === 'Auxiliar') && rawJefe && rawJefe !== 'N/A' && rawJefe !== '-') {
           const cedulaMatch = rawJefe.match(/\d{6,12}/);
           const searchedCedula = cedulaMatch ? cedulaMatch[0] : null;
 
+          const isLeadershipRole = (r: UserRole) =>
+            r === 'Jefe de Zona' ||
+            r === 'Jefe de Operaciones' ||
+            r === 'Jefe Inmediato' ||
+            r === 'Coordinador' ||
+            r === 'Administrativo';
+
           const foundInExisting = existingEmployees.find((e) => {
-            if (e.rol !== 'Jefe de Zona' && e.rol !== 'Jefe de Operaciones') return false;
+            if (!isLeadershipRole(e.rol)) return false;
             if (searchedCedula && e.cedula === searchedCedula) return true;
             const full = `${e.nombre} ${e.apellido}`.toLowerCase();
             return full.includes(rawJefe.toLowerCase()) || rawJefe.toLowerCase().includes(e.nombre.toLowerCase());
@@ -584,7 +599,7 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
                   ¿Aún no tienes la plantilla oficial lista?
                 </h4>
                 <p className="text-[11px] sm:text-xs text-emerald-800 font-medium">
-                  Descarga la plantilla con ejemplos para <strong>Repartidor</strong>, <strong>Administrativo</strong> y <strong>Jefe de Zona</strong>.
+                  Descarga la plantilla con ejemplos listos para <strong>Jefe Inmediato</strong>, <strong>Coordinador</strong>, <strong>Analista</strong>, <strong>Auxiliar</strong>, <strong>Repartidor</strong> y <strong>Jefe de Zona</strong>.
                 </p>
               </div>
             </div>
@@ -751,9 +766,19 @@ export const BulkInviteContent: React.FC<BulkInviteContentProps> = ({
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
                             row.rol === 'Repartidor'
-                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              ? 'bg-red-50 text-red-800 border-red-200'
                               : row.rol === 'Jefe de Zona'
                               ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                              : row.rol === 'Jefe Inmediato'
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : row.rol === 'Coordinador'
+                              ? 'bg-teal-50 text-teal-800 border-teal-200'
+                              : row.rol === 'Analista'
+                              ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
+                              : row.rol === 'Auxiliar'
+                              ? 'bg-orange-50 text-orange-800 border-orange-200'
+                              : row.rol === 'Jefe de Operaciones'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
                               : 'bg-purple-50 text-purple-800 border-purple-200'
                           }`}
                         >
