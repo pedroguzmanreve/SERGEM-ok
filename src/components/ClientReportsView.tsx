@@ -2,7 +2,16 @@ import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ClientOrderReport, Employee, WeeklySchedule, CompanySettings, CompanyClient } from '../types/payroll';
+import {
+  ClientOrderReport,
+  Employee,
+  WeeklySchedule,
+  CompanySettings,
+  CompanyClient,
+  Empresa,
+  CentroCosto,
+  PuntoVenta
+} from '../types/payroll';
 import { calculateHoursBreakdown, isHolidayOrSundayInColombia } from '../utils/colombianLaborLaw';
 import { buildCallLink } from '../utils/attendanceService';
 import { BulkClientUploadContent } from './BulkClientUploadModal';
@@ -36,7 +45,14 @@ import {
   Trash2,
   Briefcase,
   Check,
-  ExternalLink
+  ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  FolderTree,
+  Store,
+  Tag,
+  SlidersHorizontal,
+  CheckCircle
 } from 'lucide-react';
 
 interface ClientReportsViewProps {
@@ -45,8 +61,17 @@ interface ClientReportsViewProps {
   schedules?: WeeklySchedule[];
   company?: CompanySettings;
   clients?: CompanyClient[];
+  companies?: Empresa[];
+  costCenters?: CentroCosto[];
+  pointsOfSale?: PuntoVenta[];
   onSaveClient?: (client: CompanyClient) => Promise<void> | void;
   onDeleteClient?: (clientId: string) => Promise<void> | void;
+  onSaveCompany?: (empresa: Empresa) => Promise<void> | void;
+  onDeleteCompany?: (empresaId: string) => Promise<void> | void;
+  onSaveCostCenter?: (centroCosto: CentroCosto) => Promise<void> | void;
+  onDeleteCostCenter?: (centroCostoId: string) => Promise<void> | void;
+  onSavePointOfSale?: (puntoVenta: PuntoVenta) => Promise<void> | void;
+  onDeletePointOfSale?: (puntoVentaId: string) => Promise<void> | void;
   onAddClientReport?: (report: ClientOrderReport) => void;
   onDeleteClientReport?: (reportId: string) => void;
 }
@@ -73,12 +98,21 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
   schedules = [],
   company,
   clients = [],
+  companies = [],
+  costCenters = [],
+  pointsOfSale = [],
   onSaveClient,
   onDeleteClient,
+  onSaveCompany,
+  onDeleteCompany,
+  onSaveCostCenter,
+  onDeleteCostCenter,
+  onSavePointOfSale,
+  onDeletePointOfSale,
   onAddClientReport,
   onDeleteClientReport,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'por_empleado' | 'por_registro' | 'directorio_clientes'>('por_empleado');
+  const [activeSubTab, setActiveSubTab] = useState<'por_empleado' | 'por_registro' | 'jerarquia_organizacional' | 'directorio_clientes'>('por_empleado');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [clientFilter, setClientFilter] = useState<string>('TODOS');
@@ -101,10 +135,151 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
   const [clientSuccessMsg, setClientSuccessMsg] = useState('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
 
+  // Jerarquía Organizacional 3 Niveles State
+  const [hierarchyFilterText, setHierarchyFilterText] = useState('');
+  const [hierarchyCityFilter, setHierarchyCityFilter] = useState('TODAS');
+  const [hierarchyCompanyFilter, setHierarchyCompanyFilter] = useState('TODAS');
+  const [expandedCompanies, setExpandedCompanies] = useState<Record<string, boolean>>({});
+  const [expandedCostCenters, setExpandedCostCenters] = useState<Record<string, boolean>>({});
+
+  // Modals for Empresa (Nivel 1), Centro de Costo (Nivel 2), Punto de Venta (Nivel 3)
+  const [empresaModalOpen, setEmpresaModalOpen] = useState(false);
+  const [editingEmpresa, setEditingEmpresa] = useState<Empresa | null>(null);
+  const [empresaFormNit, setEmpresaFormNit] = useState('');
+  const [empresaFormNombre, setEmpresaFormNombre] = useState('');
+  const [empresaFormDireccion, setEmpresaFormDireccion] = useState('');
+  const [empresaFormCiudad, setEmpresaFormCiudad] = useState('Cali');
+  const [empresaFormContacto, setEmpresaFormContacto] = useState('');
+  const [empresaFormEmail, setEmpresaFormEmail] = useState('');
+  const [empresaFormTelefono, setEmpresaFormTelefono] = useState('');
+  const [empresaFormObservaciones, setEmpresaFormObservaciones] = useState('');
+  const [empresaFormActivo, setEmpresaFormActivo] = useState(true);
+
+  const [costCenterModalOpen, setCostCenterModalOpen] = useState(false);
+  const [editingCostCenter, setEditingCostCenter] = useState<CentroCosto | null>(null);
+  const [ccFormEmpresaId, setCcFormEmpresaId] = useState('');
+  const [ccFormCodigo, setCcFormCodigo] = useState('');
+  const [ccFormNombre, setCcFormNombre] = useState('');
+  const [ccFormResponsable, setCcFormResponsable] = useState('');
+  const [ccFormEmail, setCcFormEmail] = useState('');
+  const [ccFormTelefono, setCcFormTelefono] = useState('');
+  const [ccFormObservaciones, setCcFormObservaciones] = useState('');
+  const [ccFormActivo, setCcFormActivo] = useState(true);
+
+  const [pointOfSaleModalOpen, setPointOfSaleModalOpen] = useState(false);
+  const [editingPointOfSale, setEditingPointOfSale] = useState<PuntoVenta | null>(null);
+  const [pvFormEmpresaId, setPvFormEmpresaId] = useState('');
+  const [pvFormCentroCostoId, setPvFormCentroCostoId] = useState('');
+  const [pvFormCodigo, setPvFormCodigo] = useState('');
+  const [pvFormNombre, setPvFormNombre] = useState('');
+  const [pvFormCiudad, setPvFormCiudad] = useState('Cali');
+  const [pvFormDireccion, setPvFormDireccion] = useState('');
+  const [pvFormSupervisor, setPvFormSupervisor] = useState('');
+  const [pvFormTelefono, setPvFormTelefono] = useState('');
+  const [pvFormEmail, setPvFormEmail] = useState('');
+  const [pvFormTarifa, setPvFormTarifa] = useState<number | ''>(12500);
+  const [pvFormObservaciones, setPvFormObservaciones] = useState('');
+  const [pvFormActivo, setPvFormActivo] = useState(true);
+
   // Effective clients list directly from Firestore
   const effectiveClients = useMemo(() => {
     return clients || [];
   }, [clients]);
+
+  // Derived / Effective Companies (Nivel 1)
+  const effectiveCompanies = useMemo<Empresa[]>(() => {
+    if (companies && companies.length > 0) return companies;
+    const uniqueCompNames = new Set<string>();
+    const derived: Empresa[] = [];
+    effectiveClients.forEach((cli) => {
+      const name = cli.empresaNombre || cli.nombre.split(' - ')[0] || cli.nombre;
+      if (!uniqueCompNames.has(name)) {
+        uniqueCompNames.add(name);
+        derived.push({
+          id: cli.empresaId || `EMP-${(cli.nit || cli.id).replace(/\D/g, '').slice(-6) || '01'}`,
+          nit: cli.nit || 'Sin Registrar',
+          nombre: name,
+          direccionSedePrincipal: cli.direccion,
+          ciudadPrincipal: cli.ciudad,
+          contactoPrincipal: cli.contactoNombre,
+          email: cli.contactoEmail,
+          telefono: cli.contactoTelefono,
+          activo: cli.activo,
+          fechaCreacion: cli.fechaCreacion || new Date().toISOString().split('T')[0],
+        });
+      }
+    });
+    return derived;
+  }, [companies, effectiveClients]);
+
+  // Derived / Effective Centros de Costo (Nivel 2)
+  const effectiveCostCenters = useMemo<CentroCosto[]>(() => {
+    if (costCenters && costCenters.length > 0) return costCenters;
+    const uniqueCc = new Set<string>();
+    const derived: CentroCosto[] = [];
+    effectiveClients.forEach((cli) => {
+      const empName = cli.empresaNombre || cli.nombre.split(' - ')[0] || cli.nombre;
+      const ccName = cli.centroCostoNombre || 'Operación General y Despacho';
+      const key = `${empName}___${ccName}`;
+      if (!uniqueCc.has(key)) {
+        uniqueCc.add(key);
+        const parentEmp = effectiveCompanies.find((e) => e.nombre === empName);
+        derived.push({
+          id: cli.centroCostoId || `CC-${(parentEmp?.id || '01').slice(-4)}-01`,
+          empresaId: parentEmp?.id || `EMP-${(cli.nit || cli.id).slice(-4)}`,
+          empresaNombre: empName,
+          codigo: cli.centroCostoId?.split('-')[1] || 'CC-01',
+          nombre: ccName,
+          responsable: cli.contactoNombre,
+          telefono: cli.contactoTelefono,
+          email: cli.contactoEmail,
+          activo: cli.activo,
+          fechaCreacion: cli.fechaCreacion || new Date().toISOString().split('T')[0],
+        });
+      }
+    });
+    return derived;
+  }, [costCenters, effectiveClients, effectiveCompanies]);
+
+  // Derived / Effective Puntos de Venta (Nivel 3 con Ciudad)
+  const effectivePointsOfSale = useMemo<PuntoVenta[]>(() => {
+    if (pointsOfSale && pointsOfSale.length > 0) return pointsOfSale;
+    return effectiveClients.map((cli) => {
+      const empName = cli.empresaNombre || cli.nombre.split(' - ')[0] || cli.nombre;
+      const parentEmp = effectiveCompanies.find((e) => e.nombre === empName);
+      const parentCc = effectiveCostCenters.find((c) => c.empresaNombre === empName || c.empresaId === parentEmp?.id);
+      return {
+        id: cli.id,
+        centroCostoId: parentCc?.id || 'CC-01',
+        centroCostoNombre: parentCc?.nombre || 'Operación General y Despacho',
+        empresaId: parentEmp?.id || 'EMP-01',
+        empresaNombre: empName,
+        codigo: cli.codigoPunto || `PV-${cli.id.slice(-3)}`,
+        nombre: cli.nombre,
+        ciudad: cli.ciudad || 'Cali',
+        direccion: cli.direccion,
+        supervisorContacto: cli.contactoNombre,
+        telefonoContacto: cli.contactoTelefono,
+        emailContacto: cli.contactoEmail,
+        tarifaHoraBase: cli.tarifaHoraBase,
+        observaciones: cli.observaciones,
+        activo: cli.activo,
+        fechaCreacion: cli.fechaCreacion || new Date().toISOString().split('T')[0],
+      };
+    });
+  }, [pointsOfSale, effectiveClients, effectiveCompanies, effectiveCostCenters]);
+
+  // Available unique cities across all points of sale
+  const uniqueHierarchyCities = useMemo(() => {
+    const set = new Set<string>();
+    effectivePointsOfSale.forEach((pv) => {
+      if (pv.ciudad) set.add(pv.ciudad);
+    });
+    effectiveCompanies.forEach((emp) => {
+      if (emp.ciudadPrincipal) set.add(emp.ciudadPrincipal);
+    });
+    return Array.from(set).sort();
+  }, [effectivePointsOfSale, effectiveCompanies]);
 
   // Map of employees by ID for fast lookup
   const employeeMap = useMemo(() => {
@@ -877,6 +1052,284 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
     return stats;
   }, [clientReports]);
 
+  // Hierarchy Handlers for Empresa, Centro de Costo, Punto de Venta
+  const handleOpenCreateEmpresa = () => {
+    setEditingEmpresa(null);
+    setEmpresaFormNit('');
+    setEmpresaFormNombre('');
+    setEmpresaFormDireccion('');
+    setEmpresaFormCiudad('Cali');
+    setEmpresaFormContacto('');
+    setEmpresaFormEmail('');
+    setEmpresaFormTelefono('');
+    setEmpresaFormObservaciones('');
+    setEmpresaFormActivo(true);
+    setEmpresaModalOpen(true);
+  };
+
+  const handleOpenEditEmpresa = (emp: Empresa) => {
+    setEditingEmpresa(emp);
+    setEmpresaFormNit(emp.nit || '');
+    setEmpresaFormNombre(emp.nombre);
+    setEmpresaFormDireccion(emp.direccionSedePrincipal || '');
+    setEmpresaFormCiudad(emp.ciudadPrincipal || 'Cali');
+    setEmpresaFormContacto(emp.contactoPrincipal || '');
+    setEmpresaFormEmail(emp.email || '');
+    setEmpresaFormTelefono(emp.telefono || '');
+    setEmpresaFormObservaciones(emp.observaciones || '');
+    setEmpresaFormActivo(emp.activo);
+    setEmpresaModalOpen(true);
+  };
+
+  const handleSaveEmpresaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!empresaFormNombre.trim()) return;
+
+    const newEmp: Empresa = {
+      id: editingEmpresa?.id || `EMP-${Date.now().toString().slice(-6)}`,
+      nit: empresaFormNit.trim() || 'Sin NIT',
+      nombre: empresaFormNombre.trim(),
+      direccionSedePrincipal: empresaFormDireccion.trim() || undefined,
+      ciudadPrincipal: empresaFormCiudad.trim() || 'Cali',
+      contactoPrincipal: empresaFormContacto.trim() || undefined,
+      email: empresaFormEmail.trim() || undefined,
+      telefono: empresaFormTelefono.trim() || undefined,
+      observaciones: empresaFormObservaciones.trim() || undefined,
+      activo: empresaFormActivo,
+      fechaCreacion: editingEmpresa?.fechaCreacion || new Date().toISOString().split('T')[0],
+    };
+
+    if (onSaveCompany) {
+      await onSaveCompany(newEmp);
+    }
+    setClientSuccessMsg(`Empresa "${newEmp.nombre}" ${editingEmpresa ? 'actualizada' : 'registrada'} con éxito.`);
+    setEmpresaModalOpen(false);
+    setTimeout(() => setClientSuccessMsg(''), 4500);
+  };
+
+  const handleDeleteEmpresaConfirm = async (emp: Empresa) => {
+    if (!window.confirm(`¿Está seguro de eliminar la empresa "${emp.nombre}"? Esta acción removerá su cuenta de la jerarquía.`)) return;
+    if (onDeleteCompany) {
+      await onDeleteCompany(emp.id);
+      setClientSuccessMsg(`Empresa "${emp.nombre}" eliminada con éxito.`);
+      setTimeout(() => setClientSuccessMsg(''), 4000);
+    }
+  };
+
+  const handleOpenCreateCostCenter = (defaultEmpId?: string) => {
+    setEditingCostCenter(null);
+    setCcFormEmpresaId(defaultEmpId || effectiveCompanies[0]?.id || '');
+    setCcFormCodigo(`CC-0${effectiveCostCenters.length + 1}`);
+    setCcFormNombre('');
+    setCcFormResponsable('');
+    setCcFormEmail('');
+    setCcFormTelefono('');
+    setCcFormObservaciones('');
+    setCcFormActivo(true);
+    setCostCenterModalOpen(true);
+  };
+
+  const handleOpenEditCostCenter = (cc: CentroCosto) => {
+    setEditingCostCenter(cc);
+    setCcFormEmpresaId(cc.empresaId);
+    setCcFormCodigo(cc.codigo);
+    setCcFormNombre(cc.nombre);
+    setCcFormResponsable(cc.responsable || '');
+    setCcFormEmail(cc.email || '');
+    setCcFormTelefono(cc.telefono || '');
+    setCcFormObservaciones(cc.observaciones || '');
+    setCcFormActivo(cc.activo);
+    setCostCenterModalOpen(true);
+  };
+
+  const handleSaveCostCenterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ccFormNombre.trim() || !ccFormEmpresaId) return;
+
+    const parentEmp = effectiveCompanies.find((e) => e.id === ccFormEmpresaId);
+
+    const newCc: CentroCosto = {
+      id: editingCostCenter?.id || `CC-${Date.now().toString().slice(-6)}`,
+      empresaId: ccFormEmpresaId,
+      empresaNombre: parentEmp?.nombre,
+      codigo: ccFormCodigo.trim() || 'CC-01',
+      nombre: ccFormNombre.trim(),
+      responsable: ccFormResponsable.trim() || undefined,
+      email: ccFormEmail.trim() || undefined,
+      telefono: ccFormTelefono.trim() || undefined,
+      observaciones: ccFormObservaciones.trim() || undefined,
+      activo: ccFormActivo,
+      fechaCreacion: editingCostCenter?.fechaCreacion || new Date().toISOString().split('T')[0],
+    };
+
+    if (onSaveCostCenter) {
+      await onSaveCostCenter(newCc);
+    }
+    setClientSuccessMsg(`Centro de costo "${newCc.nombre}" ${editingCostCenter ? 'actualizado' : 'creado'} con éxito.`);
+    setCostCenterModalOpen(false);
+    setTimeout(() => setClientSuccessMsg(''), 4500);
+  };
+
+  const handleDeleteCostCenterConfirm = async (cc: CentroCosto) => {
+    if (!window.confirm(`¿Está seguro de eliminar el centro de costo "${cc.nombre}"?`)) return;
+    if (onDeleteCostCenter) {
+      await onDeleteCostCenter(cc.id);
+      setClientSuccessMsg(`Centro de costo "${cc.nombre}" eliminado.`);
+      setTimeout(() => setClientSuccessMsg(''), 4000);
+    }
+  };
+
+  const handleOpenCreatePointOfSale = (defaultEmpId?: string, defaultCcId?: string) => {
+    setEditingPointOfSale(null);
+    const empId = defaultEmpId || effectiveCompanies[0]?.id || '';
+    setPvFormEmpresaId(empId);
+    const availCc = effectiveCostCenters.filter((c) => !empId || c.empresaId === empId);
+    setPvFormCentroCostoId(defaultCcId || availCc[0]?.id || '');
+    setPvFormCodigo(`PV-0${effectivePointsOfSale.length + 1}`);
+    setPvFormNombre('');
+    setPvFormCiudad('Cali');
+    setPvFormDireccion('');
+    setPvFormSupervisor('');
+    setPvFormTelefono('');
+    setPvFormEmail('');
+    setPvFormTarifa(12500);
+    setPvFormObservaciones('');
+    setPvFormActivo(true);
+    setPointOfSaleModalOpen(true);
+  };
+
+  const handleOpenEditPointOfSale = (pv: PuntoVenta) => {
+    setEditingPointOfSale(pv);
+    setPvFormEmpresaId(pv.empresaId);
+    setPvFormCentroCostoId(pv.centroCostoId);
+    setPvFormCodigo(pv.codigo || '');
+    setPvFormNombre(pv.nombre);
+    setPvFormCiudad(pv.ciudad);
+    setPvFormDireccion(pv.direccion || '');
+    setPvFormSupervisor(pv.supervisorContacto || '');
+    setPvFormTelefono(pv.telefonoContacto || '');
+    setPvFormEmail(pv.emailContacto || '');
+    setPvFormTarifa(pv.tarifaHoraBase ?? 12500);
+    setPvFormObservaciones(pv.observaciones || '');
+    setPvFormActivo(pv.activo);
+    setPointOfSaleModalOpen(true);
+  };
+
+  const handleSavePointOfSaleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pvFormNombre.trim() || !pvFormCentroCostoId) return;
+
+    const parentEmp = effectiveCompanies.find((e) => e.id === pvFormEmpresaId);
+    const parentCc = effectiveCostCenters.find((c) => c.id === pvFormCentroCostoId);
+
+    const newPv: PuntoVenta = {
+      id: editingPointOfSale?.id || `PV-${Date.now().toString().slice(-6)}`,
+      centroCostoId: pvFormCentroCostoId,
+      centroCostoNombre: parentCc?.nombre,
+      empresaId: pvFormEmpresaId || parentCc?.empresaId || '',
+      empresaNombre: parentEmp?.nombre || parentCc?.empresaNombre,
+      codigo: pvFormCodigo.trim() || undefined,
+      nombre: pvFormNombre.trim(),
+      ciudad: pvFormCiudad.trim() || 'Cali',
+      direccion: pvFormDireccion.trim() || undefined,
+      supervisorContacto: pvFormSupervisor.trim() || undefined,
+      telefonoContacto: pvFormTelefono.trim() || undefined,
+      emailContacto: pvFormEmail.trim() || undefined,
+      tarifaHoraBase: typeof pvFormTarifa === 'number' ? pvFormTarifa : undefined,
+      observaciones: pvFormObservaciones.trim() || undefined,
+      activo: pvFormActivo,
+      fechaCreacion: editingPointOfSale?.fechaCreacion || new Date().toISOString().split('T')[0],
+    };
+
+    if (onSavePointOfSale) {
+      await onSavePointOfSale(newPv);
+    }
+    // Also sync with onSaveClient for compatibility
+    if (onSaveClient) {
+      await onSaveClient({
+        id: newPv.id,
+        nombre: `${newPv.empresaNombre ? `${newPv.empresaNombre} - ` : ''}${newPv.nombre}`,
+        nit: parentEmp?.nit,
+        ciudad: newPv.ciudad,
+        direccion: newPv.direccion,
+        contactoNombre: newPv.supervisorContacto,
+        contactoTelefono: newPv.telefonoContacto,
+        contactoEmail: newPv.emailContacto,
+        tarifaHoraBase: newPv.tarifaHoraBase,
+        observaciones: newPv.observaciones,
+        activo: newPv.activo,
+        empresaId: newPv.empresaId,
+        empresaNombre: newPv.empresaNombre,
+        centroCostoId: newPv.centroCostoId,
+        centroCostoNombre: newPv.centroCostoNombre,
+        codigoPunto: newPv.codigo,
+      });
+    }
+
+    setClientSuccessMsg(`Punto de venta "${newPv.nombre}" (${newPv.ciudad}) ${editingPointOfSale ? 'actualizado' : 'creado'} con éxito.`);
+    setPointOfSaleModalOpen(false);
+    setTimeout(() => setClientSuccessMsg(''), 4500);
+  };
+
+  const handleDeletePointOfSaleConfirm = async (pv: PuntoVenta) => {
+    if (!window.confirm(`¿Está seguro de eliminar el punto de venta "${pv.nombre}"?`)) return;
+    if (onDeletePointOfSale) {
+      await onDeletePointOfSale(pv.id);
+      setClientSuccessMsg(`Punto de venta "${pv.nombre}" eliminado.`);
+      setTimeout(() => setClientSuccessMsg(''), 4000);
+    }
+    if (onDeleteClient) {
+      await onDeleteClient(pv.id);
+    }
+  };
+
+  const toggleExpandCompany = (id: string) => {
+    setExpandedCompanies((prev) => ({
+      ...prev,
+      [id]: prev[id] === undefined ? false : !prev[id],
+    }));
+  };
+
+  const toggleExpandCostCenter = (id: string) => {
+    setExpandedCostCenters((prev) => ({
+      ...prev,
+      [id]: prev[id] === undefined ? false : !prev[id],
+    }));
+  };
+
+  const isCompanyExpanded = (id: string) => {
+    return expandedCompanies[id] !== false; // expanded by default
+  };
+
+  const isCostCenterExpanded = (id: string) => {
+    return expandedCostCenters[id] !== false; // expanded by default
+  };
+
+  // Hierarchy Filtered List
+  const filteredHierarchyCompanies = useMemo(() => {
+    const term = hierarchyFilterText.toLowerCase().trim();
+    return effectiveCompanies.filter((emp) => {
+      const matchComp = !hierarchyCompanyFilter || hierarchyCompanyFilter === 'TODAS' || emp.id === hierarchyCompanyFilter;
+      const ccOfEmp = effectiveCostCenters.filter((c) => c.empresaId === emp.id || c.empresaNombre === emp.nombre);
+      const pvOfEmp = effectivePointsOfSale.filter((p) => p.empresaId === emp.id || p.empresaNombre === emp.nombre);
+      const matchCity = hierarchyCityFilter === 'TODAS' ||
+        emp.ciudadPrincipal === hierarchyCityFilter ||
+        pvOfEmp.some((p) => p.ciudad === hierarchyCityFilter);
+
+      if (!matchComp || !matchCity) return false;
+      if (!term) return true;
+
+      const empText = `${emp.nombre} ${emp.nit} ${emp.ciudadPrincipal} ${emp.contactoPrincipal}`.toLowerCase();
+      if (empText.includes(term)) return true;
+
+      const ccText = ccOfEmp.map((c) => `${c.nombre} ${c.codigo} ${c.responsable}`).join(' ').toLowerCase();
+      if (ccText.includes(term)) return true;
+
+      const pvText = pvOfEmp.map((p) => `${p.nombre} ${p.codigo} ${p.ciudad} ${p.supervisorContacto}`).join(' ').toLowerCase();
+      return pvText.includes(term);
+    });
+  }, [effectiveCompanies, effectiveCostCenters, effectivePointsOfSale, hierarchyFilterText, hierarchyCityFilter, hierarchyCompanyFilter]);
+
   // WhatsApp link generator for contacting a client coordinator
   const buildClientWhatsAppLink = (phone?: string, contactName?: string, clientName?: string) => {
     if (!phone) return '#';
@@ -1075,6 +1528,19 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveSubTab('jerarquia_organizacional')}
+            id="tab-jerarquia-organizacional"
+            className={`px-3.5 py-2 rounded-xl font-extrabold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+              activeSubTab === 'jerarquia_organizacional'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FolderTree className={`w-4 h-4 ${activeSubTab === 'jerarquia_organizacional' ? 'text-white' : 'text-slate-600'}`} />
+            <span>Jerarquía Organizacional (3 Niveles)</span>
+          </button>
+
+          <button
             onClick={() => setActiveSubTab('directorio_clientes')}
             id="tab-directorio-clientes"
             className={`px-3.5 py-2 rounded-xl font-extrabold text-xs flex items-center space-x-2 transition-all cursor-pointer ${
@@ -1090,7 +1556,63 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
 
         {/* Search & Select Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          {activeSubTab === 'directorio_clientes' ? (
+          {activeSubTab === 'jerarquia_organizacional' ? (
+            <>
+              {/* Hierarchy Search Box */}
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrar Empresa, Centro de Costo, Punto..."
+                  value={hierarchyFilterText}
+                  onChange={(e) => setHierarchyFilterText(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                />
+                {hierarchyFilterText && (
+                  <button
+                    onClick={() => setHierarchyFilterText('')}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* City Filter */}
+              <div className="flex items-center space-x-1.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-300 text-xs">
+                <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                <select
+                  value={hierarchyCityFilter}
+                  onChange={(e) => setHierarchyCityFilter(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+                >
+                  <option value="TODAS">Todas las Ciudades</option>
+                  {uniqueHierarchyCities.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Company Filter */}
+              <div className="flex items-center space-x-1.5 bg-slate-50 px-3 py-2 rounded-xl border border-slate-300 text-xs">
+                <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <select
+                  value={hierarchyCompanyFilter}
+                  onChange={(e) => setHierarchyCompanyFilter(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+                >
+                  <option value="TODAS">Todas las Empresas</option>
+                  {effectiveCompanies.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : activeSubTab === 'directorio_clientes' ? (
             <div className="relative flex-1 sm:w-72">
               <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
               <input
@@ -1479,6 +2001,515 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
               </tfoot>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ================= VIEW: JERARQUÍA ORGANIZACIONAL (3 NIVELES) ================= */}
+      {activeSubTab === 'jerarquia_organizacional' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Subheader & Stats Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 bg-red-50 text-red-700 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider mb-2 border border-red-100">
+                <FolderTree className="w-3.5 h-3.5 text-red-600" />
+                <span>Estructura Operativa 3 Niveles</span>
+              </div>
+              <h3 className="font-extrabold text-lg text-slate-900 flex items-center space-x-2">
+                <span>Jerarquía Oficial de Clientes SERGEM S.A.S.</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-3xl">
+                Nivel 1: <strong>Empresas</strong> (Razón Social/NIT) → Nivel 2: <strong>Centros de Costo</strong> (Código y Responsable) → Nivel 3: <strong>Puntos de Venta</strong> (Sedes con Ciudad, Dirección y Supervisores).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                onClick={handleOpenCreateEmpresa}
+                id="btn-add-empresa"
+                className="px-3.5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs flex items-center space-x-1.5 shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Nueva Empresa</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenCreateCostCenter()}
+                id="btn-add-cost-center"
+                className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Centro de Costo</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenCreatePointOfSale()}
+                id="btn-add-point-sale"
+                className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-md cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Punto de Venta</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setClientModalTab('bulk');
+                  setEditingClient(null);
+                  setClientModalOpen(true);
+                }}
+                className="px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-md cursor-pointer transition-all"
+                title="Cargar masivamente Empresas, Centros de Costo y Puntos de Venta por Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <span>Carga Masiva Excel</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  downloadClientExcelTemplate();
+                }}
+                className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center space-x-1.5 border border-slate-300 cursor-pointer transition-all"
+                title="Descargar plantilla Excel oficial de 3 niveles"
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>Plantilla (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Cards for Hierarchy */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-black shrink-0">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Nivel 1 • Empresas</div>
+                <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{effectiveCompanies.length}</div>
+                <div className="text-[10px] text-slate-500 font-medium">Cuentas corporativas</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black shrink-0">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Nivel 2 • Centros Costo</div>
+                <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{effectiveCostCenters.length}</div>
+                <div className="text-[10px] text-slate-500 font-medium">Unidades operativas</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-black shrink-0">
+                <Store className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Nivel 3 • Puntos Venta</div>
+                <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{effectivePointsOfSale.length}</div>
+                <div className="text-[10px] text-slate-500 font-medium">Sedes y muelles</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-black shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Ciudades con Cobertura</div>
+                <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{uniqueHierarchyCities.length}</div>
+                <div className="text-[10px] text-slate-500 font-medium">Municipios activos</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Hierarchy Interactive Accordion / Tree */}
+          {filteredHierarchyCompanies.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+              <div className="w-14 h-14 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <FolderTree className="w-7 h-7" />
+              </div>
+              <h4 className="text-base font-extrabold text-slate-900 mb-1">No se encontraron empresas en la jerarquía</h4>
+              <p className="text-xs text-slate-500 max-w-md mx-auto mb-5">
+                {hierarchyFilterText || hierarchyCityFilter !== 'TODAS' || hierarchyCompanyFilter !== 'TODAS'
+                  ? 'No hay registros que coincidan con los filtros de búsqueda aplicados.'
+                  : 'Aún no se han configurado empresas en el sistema. Puedes crear la primera o cargar un archivo masivo.'}
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  onClick={handleOpenCreateEmpresa}
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs inline-flex items-center space-x-2 shadow-md cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Crear Primera Empresa</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setClientModalTab('bulk');
+                    setEditingClient(null);
+                    setClientModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs inline-flex items-center space-x-2 shadow-md cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                  <span>Importar Archivo Excel (Lote)</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredHierarchyCompanies.map((emp) => {
+                const compExpanded = isCompanyExpanded(emp.id);
+                const compCostCenters = effectiveCostCenters.filter(
+                  (cc) => cc.empresaId === emp.id || cc.empresaNombre === emp.nombre
+                );
+                const compPointsOfSale = effectivePointsOfSale.filter(
+                  (pv) => pv.empresaId === emp.id || pv.empresaNombre === emp.nombre
+                );
+
+                return (
+                  <div
+                    key={emp.id}
+                    className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden transition-all duration-200"
+                  >
+                    {/* NIVEL 1: Header de Empresa */}
+                    <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-50 via-white to-slate-50/50 border-b border-slate-200/70 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-start sm:items-center space-x-3.5 flex-1">
+                        <button
+                          onClick={() => toggleExpandCompany(emp.id)}
+                          className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-600 transition-colors cursor-pointer mt-0.5 sm:mt-0"
+                          title={compExpanded ? 'Colapsar empresa' : 'Expandir empresa'}
+                        >
+                          {compExpanded ? (
+                            <ChevronDown className="w-5 h-5 text-red-600" />
+                          ) : (
+                            <ChevronRight className="w-5 h-5 text-slate-500" />
+                          )}
+                        </button>
+
+                        <div className="w-10 h-10 rounded-xl bg-red-100/80 text-red-700 flex items-center justify-center font-black shrink-0 shadow-2xs">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-extrabold text-base text-slate-900 leading-tight">
+                              {emp.nombre}
+                            </h4>
+                            <span className="font-mono text-[11px] font-bold px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-300 rounded-md">
+                              NIT: {emp.nit || 'Sin NIT'}
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                emp.activo
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}
+                            >
+                              {emp.activo ? 'Activa' : 'Inactiva'}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
+                            {emp.ciudadPrincipal && (
+                              <span className="inline-flex items-center space-x-1">
+                                <MapPin className="w-3.5 h-3.5 text-red-500" />
+                                <span className="font-semibold text-slate-700">{emp.ciudadPrincipal}</span>
+                              </span>
+                            )}
+                            {emp.direccionSedePrincipal && (
+                              <span className="truncate max-w-xs">{emp.direccionSedePrincipal}</span>
+                            )}
+                            {emp.contactoPrincipal && (
+                              <span>Contacto: <strong className="text-slate-700">{emp.contactoPrincipal}</strong></span>
+                            )}
+                            {emp.telefono && (
+                              <span className="font-mono text-slate-600">Tel: {emp.telefono}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botones de Acción de Empresa */}
+                      <div className="flex items-center gap-2 shrink-0 self-end md:self-center pl-10 md:pl-0">
+                        <span className="text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg">
+                          {compCostCenters.length} {compCostCenters.length === 1 ? 'Centro Costo' : 'Centros Costo'}
+                        </span>
+                        <span className="text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                          {compPointsOfSale.length} {compPointsOfSale.length === 1 ? 'Punto Venta' : 'Puntos Venta'}
+                        </span>
+
+                        <button
+                          onClick={() => handleOpenCreateCostCenter(emp.id)}
+                          className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs flex items-center space-x-1 border border-indigo-200 cursor-pointer transition-colors"
+                          title="Añadir nuevo Centro de Costo bajo esta empresa"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Centro</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenEditEmpresa(emp)}
+                          className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                          title="Editar Empresa"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteEmpresaConfirm(emp)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                          title="Eliminar Empresa"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Contenido expandible: Centros de Costo de esta Empresa */}
+                    {compExpanded && (
+                      <div className="p-4 sm:p-6 bg-slate-50/60 space-y-4 border-t border-slate-100">
+                        {compCostCenters.length === 0 ? (
+                          <div className="p-6 bg-white rounded-xl border border-slate-200 text-center">
+                            <p className="text-xs text-slate-500 mb-3">
+                              Esta empresa aún no cuenta con Centros de Costo vinculados.
+                            </p>
+                            <button
+                              onClick={() => handleOpenCreateCostCenter(emp.id)}
+                              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs inline-flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Crear Primer Centro de Costo</span>
+                            </button>
+                          </div>
+                        ) : (
+                          compCostCenters.map((cc) => {
+                            const ccExpanded = isCostCenterExpanded(cc.id);
+                            const ccPointsOfSale = effectivePointsOfSale.filter(
+                              (pv) => pv.centroCostoId === cc.id || pv.centroCostoNombre === cc.nombre
+                            );
+
+                            return (
+                              <div
+                                key={cc.id}
+                                className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden transition-all"
+                              >
+                                {/* NIVEL 2: Header de Centro de Costo */}
+                                <div className="p-3.5 sm:p-4 bg-gradient-to-r from-indigo-50/40 via-white to-slate-50/30 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div className="flex items-center space-x-3 flex-1">
+                                    <button
+                                      onClick={() => toggleExpandCostCenter(cc.id)}
+                                      className="p-1 rounded-md hover:bg-slate-200/60 text-slate-500 cursor-pointer transition-colors"
+                                    >
+                                      {ccExpanded ? (
+                                        <ChevronDown className="w-4 h-4 text-indigo-600" />
+                                      ) : (
+                                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                                      )}
+                                    </button>
+
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-black shrink-0">
+                                      <Layers className="w-4 h-4" />
+                                    </div>
+
+                                    <div>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-mono text-[10px] font-extrabold px-2 py-0.5 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-md">
+                                          {cc.codigo || 'CC-01'}
+                                        </span>
+                                        <h5 className="font-extrabold text-sm text-slate-900">
+                                          {cc.nombre}
+                                        </h5>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mt-0.5">
+                                        {cc.responsable && (
+                                          <span>Responsable: <strong className="text-slate-700">{cc.responsable}</strong></span>
+                                        )}
+                                        {cc.telefono && (
+                                          <span className="font-mono">Tel: {cc.telefono}</span>
+                                        )}
+                                        {cc.email && (
+                                          <span>{cc.email}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Botones de Acción de Centro de Costo */}
+                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center pl-8 sm:pl-0">
+                                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                      {ccPointsOfSale.length} Puntos de Venta
+                                    </span>
+
+                                    <button
+                                      onClick={() => handleOpenCreatePointOfSale(emp.id, cc.id)}
+                                      className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-md text-[11px] flex items-center space-x-1 border border-emerald-200 cursor-pointer"
+                                      title="Añadir nuevo Punto de Venta bajo este Centro de Costo"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>+ Punto</span>
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleOpenEditCostCenter(cc)}
+                                      className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-md cursor-pointer"
+                                      title="Editar Centro de Costo"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleDeleteCostCenterConfirm(cc)}
+                                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                                      title="Eliminar Centro de Costo"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* NIVEL 3: Grid de Puntos de Venta (con Ciudad) */}
+                                {ccExpanded && (
+                                  <div className="p-4 bg-slate-50/40">
+                                    {ccPointsOfSale.length === 0 ? (
+                                      <div className="p-4 bg-white rounded-lg border border-slate-200 text-center">
+                                        <p className="text-xs text-slate-500 mb-2">
+                                          Este centro de costo aún no tiene puntos de venta asignados.
+                                        </p>
+                                        <button
+                                          onClick={() => handleOpenCreatePointOfSale(emp.id, cc.id)}
+                                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md text-xs inline-flex items-center space-x-1 cursor-pointer"
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                          <span>Crear Primer Punto de Venta</span>
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {ccPointsOfSale.map((pv) => {
+                                          const waLink = buildClientWhatsAppLink(
+                                            pv.telefonoContacto,
+                                            pv.supervisorContacto,
+                                            pv.nombre
+                                          );
+                                          const callLink = pv.telefonoContacto ? buildCallLink(pv.telefonoContacto) : '#';
+
+                                          return (
+                                            <div
+                                              key={pv.id}
+                                              className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between"
+                                            >
+                                              <div>
+                                                <div className="flex items-start justify-between gap-1 mb-1.5">
+                                                  <div className="flex items-center space-x-1.5">
+                                                    <span className="font-mono text-[9px] font-black px-1.5 py-0.5 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded">
+                                                      {pv.codigo || 'PV'}
+                                                    </span>
+                                                    <h6 className="font-extrabold text-xs text-slate-900 leading-tight">
+                                                      {pv.nombre}
+                                                    </h6>
+                                                  </div>
+                                                  <span className="inline-flex items-center space-x-1 bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded text-[10px] font-extrabold shrink-0">
+                                                    <MapPin className="w-2.5 h-2.5 text-red-600" />
+                                                    <span>{pv.ciudad || 'Cali'}</span>
+                                                  </span>
+                                                </div>
+
+                                                {pv.direccion && (
+                                                  <p className="text-[11px] text-slate-500 mb-2 truncate" title={pv.direccion}>
+                                                    {pv.direccion}
+                                                  </p>
+                                                )}
+
+                                                {/* Supervisor & Rate */}
+                                                <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 text-[11px] text-slate-600 space-y-1 mb-2">
+                                                  <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] uppercase font-bold text-slate-400">Supervisor:</span>
+                                                    <span className="font-bold text-slate-800">{pv.supervisorContacto || 'No asignado'}</span>
+                                                  </div>
+                                                  {pv.tarifaHoraBase && (
+                                                    <div className="flex items-center justify-between">
+                                                      <span className="text-[10px] uppercase font-bold text-slate-400">Tarifa pactada:</span>
+                                                      <span className="font-mono font-extrabold text-emerald-700">${pv.tarifaHoraBase.toLocaleString('es-CO')}/h</span>
+                                                    </div>
+                                                  )}
+                                                </div>
+
+                                                {pv.observaciones && (
+                                                  <p className="text-[10px] text-amber-800 italic bg-amber-50/60 p-1.5 rounded border border-amber-100 mb-2">
+                                                    {pv.observaciones}
+                                                  </p>
+                                                )}
+                                              </div>
+
+                                              {/* Action row: Call, WhatsApp, Edit, Delete */}
+                                              <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
+                                                <div className="flex items-center space-x-1">
+                                                  <a
+                                                    href={callLink}
+                                                    className={`py-1 px-2 rounded-md font-bold text-[10px] flex items-center space-x-1 ${
+                                                      pv.telefonoContacto
+                                                        ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 cursor-pointer'
+                                                        : 'bg-slate-100 text-slate-400 pointer-events-none'
+                                                    }`}
+                                                    title={pv.telefonoContacto ? `Llamar a ${pv.telefonoContacto}` : 'Sin teléfono'}
+                                                  >
+                                                    <Phone className="w-2.5 h-2.5" />
+                                                    <span>Llamar</span>
+                                                  </a>
+
+                                                  <a
+                                                    href={waLink}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`py-1 px-2 rounded-md font-bold text-[10px] flex items-center space-x-1 ${
+                                                      pv.telefonoContacto
+                                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                                                        : 'bg-slate-100 text-slate-400 pointer-events-none'
+                                                    }`}
+                                                    title={pv.telefonoContacto ? `WhatsApp a ${pv.telefonoContacto}` : 'Sin WhatsApp'}
+                                                  >
+                                                    <MessageCircle className="w-2.5 h-2.5" />
+                                                    <span>WA</span>
+                                                  </a>
+                                                </div>
+
+                                                <div className="flex items-center space-x-1">
+                                                  <button
+                                                    onClick={() => handleOpenEditPointOfSale(pv)}
+                                                    className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded cursor-pointer"
+                                                    title="Editar Punto de Venta"
+                                                  >
+                                                    <Edit2 className="w-3 h-3" />
+                                                  </button>
+                                                  <button
+                                                    onClick={() => handleDeletePointOfSaleConfirm(pv)}
+                                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                                                    title="Eliminar Punto de Venta"
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -2002,6 +3033,593 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
                 </form>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL 1: CREAR / EDITAR EMPRESA (NIVEL 1) ================= */}
+      {empresaModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden my-8 animate-fade-in flex flex-col max-h-[90vh]">
+            <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-white/10 rounded-2xl">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">
+                    {editingEmpresa ? 'Editar Empresa Corporativa' : 'Nueva Empresa Corporativa (Nivel 1)'}
+                  </h3>
+                  <p className="text-xs text-red-100 font-medium">
+                    Jerarquía SERGEM • Nivel 1: Razón Social y NIT Matriz
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEmpresaModalOpen(false)}
+                className="text-white/80 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEmpresaSubmit} className="p-6 space-y-4 text-xs font-semibold text-slate-700 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Nombre o Razón Social de la Empresa *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: ALMACENES ÉXITO S.A., TCC LOGÍSTICA..."
+                  value={empresaFormNombre}
+                  onChange={(e) => setEmpresaFormNombre(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    NIT / Identificación Tributaria *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: 890.900.608-9"
+                    value={empresaFormNit}
+                    onChange={(e) => setEmpresaFormNit(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Ciudad Sede Principal
+                  </label>
+                  <select
+                    value={empresaFormCiudad}
+                    onChange={(e) => setEmpresaFormCiudad(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50 cursor-pointer"
+                  >
+                    <option value="Cali">Cali (Valle)</option>
+                    <option value="Yumbo">Yumbo (Valle)</option>
+                    <option value="Palmira">Palmira (Valle)</option>
+                    <option value="Jamundí">Jamundí (Valle)</option>
+                    <option value="Buga">Buga (Valle)</option>
+                    <option value="Tuluá">Tuluá (Valle)</option>
+                    <option value="Buenaventura">Buenaventura (Valle)</option>
+                    <option value="Bogotá D.C.">Bogotá D.C.</option>
+                    <option value="Medellín">Medellín (Antioquia)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Dirección Sede Principal / Administrativa
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Carrera 100 # 16-20, Piso 5"
+                  value={empresaFormDireccion}
+                  onChange={(e) => setEmpresaFormDireccion(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Contacto Principal / Gerente de Cuenta
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Liceth Morales"
+                    value={empresaFormContacto}
+                    onChange={(e) => setEmpresaFormContacto(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Teléfono Celular / PBX
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Ej: 3154567890"
+                    value={empresaFormTelefono}
+                    onChange={(e) => setEmpresaFormTelefono(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Correo Electrónico Corporativo
+                </label>
+                <input
+                  type="email"
+                  placeholder="Ej: contratos@cliente.com"
+                  value={empresaFormEmail}
+                  onChange={(e) => setEmpresaFormEmail(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Observaciones Generales
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Notas de facturación, contrato marco, especificaciones..."
+                  value={empresaFormObservaciones}
+                  onChange={(e) => setEmpresaFormObservaciones(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-red-500 bg-slate-50/50 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="empresa-form-activo"
+                  checked={empresaFormActivo}
+                  onChange={(e) => setEmpresaFormActivo(e.target.checked)}
+                  className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                />
+                <label htmlFor="empresa-form-activo" className="text-xs font-bold text-slate-700 cursor-pointer">
+                  Empresa Activa en el Sistema
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEmpresaModalOpen(false)}
+                  className="px-4 py-2 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center space-x-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{editingEmpresa ? 'Guardar Cambios' : 'Registrar Empresa'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL 2: CREAR / EDITAR CENTRO DE COSTO (NIVEL 2) ================= */}
+      {costCenterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden my-8 animate-fade-in flex flex-col max-h-[90vh]">
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-6 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-white/10 rounded-2xl">
+                  <Layers className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">
+                    {editingCostCenter ? 'Editar Centro de Costo' : 'Nuevo Centro de Costo (Nivel 2)'}
+                  </h3>
+                  <p className="text-xs text-indigo-100 font-medium">
+                    Jerarquía SERGEM • Nivel 2: Unidad de Costo Operativo
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCostCenterModalOpen(false)}
+                className="text-white/80 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCostCenterSubmit} className="p-6 space-y-4 text-xs font-semibold text-slate-700 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Empresa Matriz / Corporativa *
+                </label>
+                <select
+                  required
+                  value={ccFormEmpresaId}
+                  onChange={(e) => setCcFormEmpresaId(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 cursor-pointer"
+                >
+                  <option value="">Selecciona la Empresa...</option>
+                  {effectiveCompanies.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.nombre} (NIT: {emp.nit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Código del Centro de Costo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: CC-01, LOG-02, OPE-VALLE"
+                    value={ccFormCodigo}
+                    onChange={(e) => setCcFormCodigo(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Nombre del Centro de Costo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Operación Logística Norte, Despachos..."
+                    value={ccFormNombre}
+                    onChange={(e) => setCcFormNombre(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Responsable / Administrador
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Ing. Carlos Ruiz"
+                    value={ccFormResponsable}
+                    onChange={(e) => setCcFormResponsable(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Teléfono Celular
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Ej: 3109876543"
+                    value={ccFormTelefono}
+                    onChange={(e) => setCcFormTelefono(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Correo Electrónico de Notificaciones
+                </label>
+                <input
+                  type="email"
+                  placeholder="Ej: centrocostos@empresa.com"
+                  value={ccFormEmail}
+                  onChange={(e) => setCcFormEmail(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Observaciones / Requisitos
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Especificaciones del centro de costo..."
+                  value={ccFormObservaciones}
+                  onChange={(e) => setCcFormObservaciones(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="cc-form-activo"
+                  checked={ccFormActivo}
+                  onChange={(e) => setCcFormActivo(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                />
+                <label htmlFor="cc-form-activo" className="text-xs font-bold text-slate-700 cursor-pointer">
+                  Centro de Costo Activo
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setCostCenterModalOpen(false)}
+                  className="px-4 py-2 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center space-x-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{editingCostCenter ? 'Guardar Cambios' : 'Crear Centro de Costo'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL 3: CREAR / EDITAR PUNTO DE VENTA (NIVEL 3 CON CIUDAD) ================= */}
+      {pointOfSaleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl border border-slate-200 overflow-hidden my-8 animate-fade-in flex flex-col max-h-[90vh]">
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-white/10 rounded-2xl">
+                  <Store className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">
+                    {editingPointOfSale ? 'Editar Punto de Venta / Sede' : 'Nuevo Punto de Venta (Nivel 3 con Ciudad)'}
+                  </h3>
+                  <p className="text-xs text-emerald-100 font-medium">
+                    Jerarquía SERGEM • Nivel 3: Sede operativa, muelle y ciudad de despacho
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPointOfSaleModalOpen(false)}
+                className="text-white/80 hover:text-white p-1.5 rounded-xl hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePointOfSaleSubmit} className="p-6 space-y-4 text-xs font-semibold text-slate-700 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Empresa Matriz *
+                  </label>
+                  <select
+                    required
+                    value={pvFormEmpresaId}
+                    onChange={(e) => {
+                      setPvFormEmpresaId(e.target.value);
+                      const filteredCc = effectiveCostCenters.filter((c) => c.empresaId === e.target.value);
+                      if (filteredCc.length > 0) {
+                        setPvFormCentroCostoId(filteredCc[0].id);
+                      }
+                    }}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 cursor-pointer"
+                  >
+                    <option value="">Selecciona Empresa...</option>
+                    {effectiveCompanies.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Centro de Costo Vinculado *
+                  </label>
+                  <select
+                    required
+                    value={pvFormCentroCostoId}
+                    onChange={(e) => setPvFormCentroCostoId(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 cursor-pointer"
+                  >
+                    <option value="">Selecciona Centro de Costo...</option>
+                    {effectiveCostCenters
+                      .filter((cc) => !pvFormEmpresaId || cc.empresaId === pvFormEmpresaId)
+                      .map((cc) => (
+                        <option key={cc.id} value={cc.id}>
+                          {cc.codigo} - {cc.nombre}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Código de Punto
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: PV-01, SEDE-01"
+                    value={pvFormCodigo}
+                    onChange={(e) => setPvFormCodigo(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Nombre del Punto de Venta / Sede *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Éxito Chipichape, Bodega Acopi Yumbo..."
+                    value={pvFormNombre}
+                    onChange={(e) => setPvFormNombre(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Ciudad / Sede Operativa *
+                  </label>
+                  <select
+                    required
+                    value={pvFormCiudad}
+                    onChange={(e) => setPvFormCiudad(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 cursor-pointer"
+                  >
+                    <option value="Cali">Cali (Valle)</option>
+                    <option value="Yumbo">Yumbo (Valle)</option>
+                    <option value="Palmira">Palmira (Valle)</option>
+                    <option value="Jamundí">Jamundí (Valle)</option>
+                    <option value="Buga">Buga (Valle)</option>
+                    <option value="Tuluá">Tuluá (Valle)</option>
+                    <option value="Buenaventura">Buenaventura (Valle)</option>
+                    <option value="Bogotá D.C.">Bogotá D.C.</option>
+                    <option value="Medellín">Medellín (Antioquia)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Tarifa Base por Hora ($ COP)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    placeholder="Ej: 12500"
+                    value={pvFormTarifa}
+                    onChange={(e) => setPvFormTarifa(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Dirección Exacta de Muelle / Punto de Despacho
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Calle 38 Norte # 6N-45, Muelle 2"
+                  value={pvFormDireccion}
+                  onChange={(e) => setPvFormDireccion(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Supervisor / Coordinador de Sede
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Andrés Morales"
+                    value={pvFormSupervisor}
+                    onChange={(e) => setPvFormSupervisor(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                    Teléfono Celular (Llamadas / WhatsApp)
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Ej: 3187654321"
+                    value={pvFormTelefono}
+                    onChange={(e) => setPvFormTelefono(e.target.value)}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Correo Electrónico de Contacto
+                </label>
+                <input
+                  type="email"
+                  placeholder="Ej: supervisor.chipichape@empresa.com"
+                  value={pvFormEmail}
+                  onChange={(e) => setPvFormEmail(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  Observaciones Operativas / Condiciones de Entrega
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Horarios de cargue, requisitos de EPP, documentación al ingresar..."
+                  value={pvFormObservaciones}
+                  onChange={(e) => setPvFormObservaciones(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="pv-form-activo"
+                  checked={pvFormActivo}
+                  onChange={(e) => setPvFormActivo(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                />
+                <label htmlFor="pv-form-activo" className="text-xs font-bold text-slate-700 cursor-pointer">
+                  Punto de Venta Activo en la Operación
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setPointOfSaleModalOpen(false)}
+                  className="px-4 py-2 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center space-x-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{editingPointOfSale ? 'Guardar Cambios' : 'Crear Punto de Venta'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

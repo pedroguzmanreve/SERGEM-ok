@@ -1,7 +1,12 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { CompanyClient } from '../types/payroll';
-import { saveClientToFirestore } from '../services/firestoreService';
+import { CompanyClient, Empresa, CentroCosto, PuntoVenta } from '../types/payroll';
+import {
+  saveClientToFirestore,
+  saveCompanyToFirestore,
+  saveCostCenterToFirestore,
+  savePointOfSaleToFirestore
+} from '../services/firestoreService';
 import { downloadClientExcelTemplate } from '../utils/clientExcelService';
 import {
   X,
@@ -19,12 +24,23 @@ import {
   Phone,
   Mail,
   DollarSign,
+  Layers,
+  Tag,
+  Store
 } from 'lucide-react';
 
 export interface ParsedBulkClient {
   tempId: string;
-  nombre: string;
+  // Nivel 1: Empresa
+  empresaNombre: string;
   nit?: string;
+  // Nivel 2: Centro de Costo
+  centroCostoCodigo: string;
+  centroCostoNombre: string;
+  // Nivel 3: Punto de Venta (con Ciudad)
+  puntoVentaCodigo?: string;
+  puntoVentaNombre: string;
+  nombre: string; // Para compatibilidad
   ciudad: string;
   direccion?: string;
   contactoNombre?: string;
@@ -41,6 +57,9 @@ export interface ParsedBulkClient {
 
 export interface ProcessedClientResult {
   client: CompanyClient;
+  empresa?: Empresa;
+  centroCosto?: CentroCosto;
+  puntoVenta?: PuntoVenta;
   isNew: boolean;
   success: boolean;
   message: string;
@@ -144,9 +163,24 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
         });
       };
 
-      const colNit = findColIdx(['nit', 'rut', 'identificacion', 'documento']);
-      const colNombre = findColIdx(['nombre', 'razon social', 'cliente', 'empresa']);
-      const colCiudad = findColIdx(['ciudad', 'sede', 'municipio']);
+      // 1. Detección columnas Nivel 1: Empresa
+      const colEmpresaNit = findColIdx(['nit empresa', 'nit', 'rut', 'identificacion', 'documento']);
+      const colEmpresaNombre = findColIdx([
+        'razon social / empresa',
+        'razon social',
+        'empresa',
+        'cliente corporativo',
+        'nombre empresa'
+      ]);
+
+      // 2. Detección columnas Nivel 2: Centro de Costo
+      const colCcCodigo = findColIdx(['codigo centro costo', 'cod centro costo', 'centro costo codigo', 'codigo cc', 'cod cc']);
+      const colCcNombre = findColIdx(['nombre centro costo', 'centro de costo', 'centro costo']);
+
+      // 3. Detección columnas Nivel 3: Punto de Venta y CIUDAD
+      const colPvCodigo = findColIdx(['codigo punto venta', 'cod punto venta', 'codigo sede', 'cod punto', 'codigo tienda']);
+      const colPvNombre = findColIdx(['nombre punto de venta / sede', 'nombre punto de venta', 'punto de venta', 'nombre sede', 'sede / muelle', 'tienda', 'muelle']);
+      const colCiudad = findColIdx(['ciudad', 'municipio']);
       const colDireccion = findColIdx(['direccion', 'domicilio', 'bodega', 'muelle']);
       const colContacto = findColIdx(['contacto', 'supervisor', 'coordinador', 'representante']);
       const colTelefono = findColIdx(['telefono', 'celular', 'movil', 'whatsapp']);
@@ -155,11 +189,8 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
       const colObs = findColIdx(['observaciones', 'requisitos', 'notas', 'epp']);
       const colEstado = findColIdx(['estado', 'activo']);
 
-      if (colNombre === -1 && colNit === -1) {
-        throw new Error(
-          'No se reconocieron las columnas básicas (Nombre o Razón Social, NIT). Por favor utiliza la plantilla oficial.'
-        );
-      }
+      // Si no detectó columna específica de empresa o punto de venta, buscar columna genérica de nombre
+      const colGenericNombre = findColIdx(['nombre', 'cliente']);
 
       const parsed: ParsedBulkClient[] = [];
 
@@ -167,8 +198,23 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
         const rowText = row.join('').trim();
         if (!rowText) return;
 
-        const rawNombre = colNombre !== -1 ? String(row[colNombre] ?? '').trim() : '';
-        const rawNit = colNit !== -1 ? String(row[colNit] ?? '').trim() : '';
+        // Nivel 1: Empresa
+        let rawEmpresa = colEmpresaNombre !== -1 ? String(row[colEmpresaNombre] ?? '').trim() : '';
+        if (!rawEmpresa && colGenericNombre !== -1) {
+          rawEmpresa = String(row[colGenericNombre] ?? '').trim();
+        }
+        const rawNit = colEmpresaNit !== -1 ? String(row[colEmpresaNit] ?? '').trim() : '';
+
+        // Nivel 2: Centro de Costo
+        const rawCcCodigo = colCcCodigo !== -1 ? String(row[colCcCodigo] ?? '').trim() : `CC-${String(index + 1).padStart(2, '0')}`;
+        const rawCcNombre = colCcNombre !== -1 ? String(row[colCcNombre] ?? '').trim() : 'Operación General y Logística';
+
+        // Nivel 3: Punto de Venta (con Ciudad)
+        let rawPvNombre = colPvNombre !== -1 ? String(row[colPvNombre] ?? '').trim() : '';
+        if (!rawPvNombre) {
+          rawPvNombre = rawEmpresa || `Punto de Venta ${index + 1}`;
+        }
+        const rawPvCodigo = colPvCodigo !== -1 ? String(row[colPvCodigo] ?? '').trim() : `PV-${String(index + 1).padStart(2, '0')}`;
         const rawCiudad = colCiudad !== -1 ? String(row[colCiudad] ?? '').trim() : 'Cali';
         const rawDireccion = colDireccion !== -1 ? String(row[colDireccion] ?? '').trim() : '';
         const rawContacto = colContacto !== -1 ? String(row[colContacto] ?? '').trim() : '';
@@ -181,8 +227,11 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
         const activo = !rawEstadoStr.includes('inactiv') && !rawEstadoStr.includes('no');
 
         const validationErrors: string[] = [];
-        if (!rawNombre) {
-          validationErrors.push('Falta Nombre o Razón Social');
+        if (!rawEmpresa && !rawPvNombre) {
+          validationErrors.push('Falta Nombre de Empresa o Punto de Venta');
+        }
+        if (!rawCiudad) {
+          validationErrors.push('Falta Ciudad de la sede');
         }
         if (rawEmail && !/^\S+@\S+\.\S+$/.test(rawEmail)) {
           validationErrors.push('Formato de correo inválido');
@@ -192,14 +241,19 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
           rawNit.includes('890.900.608') ||
           rawNit.includes('900.123.456') ||
           rawNit.includes('901.456.789') ||
-          rawNombre.toUpperCase().includes('ALKOSTO') ||
-          rawNombre.toUpperCase().includes('TCC LOGÍSTICA') ||
-          rawNombre.toUpperCase().includes('DISTRIBUIDORA DE MEDICAMENTOS');
+          rawEmpresa.toUpperCase().includes('ALKOSTO') ||
+          rawEmpresa.toUpperCase().includes('TCC LOGÍSTICA') ||
+          rawEmpresa.toUpperCase().includes('DISTRIBUIDORA DE MEDICAMENTOS');
 
         parsed.push({
           tempId: `BULK-CLI-${index + 1}-${Date.now().toString(36)}`,
-          nombre: rawNombre || `Cliente ${index + 1}`,
+          empresaNombre: rawEmpresa || rawPvNombre || `Empresa ${index + 1}`,
           nit: rawNit || undefined,
+          centroCostoCodigo: rawCcCodigo || 'CC-01',
+          centroCostoNombre: rawCcNombre || 'Operación General',
+          puntoVentaCodigo: rawPvCodigo || undefined,
+          puntoVentaNombre: rawPvNombre || rawEmpresa || `Sede ${index + 1}`,
+          nombre: rawPvNombre !== rawEmpresa ? `${rawEmpresa} - ${rawPvNombre}` : rawEmpresa,
           ciudad: rawCiudad || 'Cali',
           direccion: rawDireccion || undefined,
           contactoNombre: rawContacto || undefined,
@@ -283,18 +337,68 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
     for (let i = 0; i < selectedRows.length; i++) {
       const row = selectedRows[i];
 
-      // Buscar si ya existe por NIT o Nombre exacto
-      const existing = existingClients.find((c) => {
-        if (row.nit && c.nit && row.nit.replace(/\D/g, '') === c.nit.replace(/\D/g, '')) return true;
-        return c.nombre.trim().toLowerCase() === row.nombre.trim().toLowerCase();
-      });
+      // Identificador único para cada nivel
+      const cleanNit = row.nit ? row.nit.replace(/\D/g, '') : '';
+      const cleanNitId = cleanNit ? cleanNit.slice(-6) : (Date.now() + i).toString().slice(-6);
 
-      const cleanNitId = row.nit ? row.nit.replace(/\D/g, '').slice(-6) : null;
-      const clientId = existing?.id || `CLI-${cleanNitId || (Date.now() + i).toString().slice(-6)}`;
+      const empresaId = `EMP-${cleanNit ? cleanNit.slice(-6) : cleanNitId}`;
+      const centroCostoId = `CC-${(row.centroCostoCodigo || '01').replace(/[^a-zA-Z0-9]/g, '')}-${cleanNitId}`;
+      const puntoVentaId = `PV-${(row.puntoVentaCodigo || '01').replace(/[^a-zA-Z0-9]/g, '')}-${cleanNitId}`;
 
+      // 1. Nivel 1: Empresa
+      const newEmpresa: Empresa = {
+        id: empresaId,
+        nit: row.nit || 'Sin NIT',
+        nombre: row.empresaNombre,
+        contactoPrincipal: row.contactoNombre,
+        email: row.contactoEmail,
+        telefono: row.contactoTelefono,
+        direccionSedePrincipal: row.direccion,
+        ciudadPrincipal: row.ciudad,
+        activo: row.activo,
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        observaciones: row.observaciones,
+      };
+
+      // 2. Nivel 2: Centro de Costo
+      const newCentroCosto: CentroCosto = {
+        id: centroCostoId,
+        empresaId,
+        empresaNombre: row.empresaNombre,
+        codigo: row.centroCostoCodigo,
+        nombre: row.centroCostoNombre,
+        responsable: row.contactoNombre,
+        telefono: row.contactoTelefono,
+        email: row.contactoEmail,
+        activo: row.activo,
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        observaciones: row.observaciones,
+      };
+
+      // 3. Nivel 3: Punto de Venta (con Ciudad)
+      const newPuntoVenta: PuntoVenta = {
+        id: puntoVentaId,
+        centroCostoId,
+        centroCostoNombre: row.centroCostoNombre,
+        empresaId,
+        empresaNombre: row.empresaNombre,
+        codigo: row.puntoVentaCodigo,
+        nombre: row.puntoVentaNombre,
+        ciudad: row.ciudad,
+        direccion: row.direccion,
+        supervisorContacto: row.contactoNombre,
+        telefonoContacto: row.contactoTelefono,
+        emailContacto: row.contactoEmail,
+        tarifaHoraBase: row.tarifaHoraBase,
+        observaciones: row.observaciones,
+        activo: row.activo,
+        fechaCreacion: new Date().toISOString().split('T')[0],
+      };
+
+      // 4. Compatibilidad Cliente
       const newClient: CompanyClient = {
-        id: clientId,
-        nombre: row.nombre.trim(),
+        id: puntoVentaId,
+        nombre: row.nombre,
         nit: row.nit?.trim() || undefined,
         ciudad: row.ciudad.trim() || 'Cali',
         direccion: row.direccion?.trim() || undefined,
@@ -304,27 +408,40 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
         tarifaHoraBase: row.tarifaHoraBase,
         observaciones: row.observaciones?.trim() || undefined,
         activo: row.activo,
-        fechaCreacion: existing?.fechaCreacion || new Date().toISOString().split('T')[0],
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        empresaId,
+        empresaNombre: row.empresaNombre,
+        centroCostoId,
+        centroCostoNombre: row.centroCostoNombre,
+        codigoPunto: row.puntoVentaCodigo,
+        codigoCentroCosto: row.centroCostoCodigo,
       };
 
       let success = true;
-      let message = existing ? 'Cliente actualizado en sistema' : 'Cliente nuevo creado';
+      let message = 'Estructura Jerárquica creada con éxito';
 
       try {
+        await saveCompanyToFirestore(newEmpresa);
+        await saveCostCenterToFirestore(newCentroCosto);
+        await savePointOfSaleToFirestore(newPuntoVenta);
+
         if (onSaveClient) {
           await onSaveClient(newClient);
         } else {
           await saveClientToFirestore(newClient);
         }
       } catch (err: any) {
-        console.warn(`Error guardando cliente ${newClient.nombre}:`, err);
+        console.warn(`Error guardando estructura jerárquica para ${newClient.nombre}:`, err);
         success = false;
         message = err.message || 'Error al persistir en base de datos';
       }
 
       results.push({
         client: newClient,
-        isNew: !existing,
+        empresa: newEmpresa,
+        centroCosto: newCentroCosto,
+        puntoVenta: newPuntoVenta,
+        isNew: true,
         success,
         message,
       });
@@ -369,25 +486,33 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
 
     const exportData = [
       [
-        'ID Cliente SERGEM',
-        'NIT / RUT',
-        'Nombre o Razón Social',
-        'Ciudad',
-        'Dirección Despacho / Sede',
+        'ID Sede / Punto Venta',
+        'Empresa (Razón Social)',
+        'NIT Empresa',
+        'Código Centro Costo',
+        'Nombre Centro Costo',
+        'Código Punto Venta',
+        'Nombre Punto de Venta / Sede',
+        'Ciudad (Operativa)',
+        'Dirección Sede / Muelle',
         'Contacto Supervisor',
         'Teléfono Celular',
         'Correo Electrónico',
         'Tarifa Base Hora (COP)',
-        'Observaciones Operativas',
+        'Observaciones Operativas / EPP',
         'Estado en Plataforma',
         'Resultado de Carga',
         'Fecha Registro'
       ],
       ...processedResults.map((r) => [
         r.client.id,
-        r.client.nit || 'N/A',
-        r.client.nombre,
-        r.client.ciudad || 'Cali',
+        r.empresa?.nombre || r.client.empresaNombre || r.client.nombre,
+        r.empresa?.nit || r.client.nit || 'N/A',
+        r.centroCosto?.codigo || r.client.codigoCentroCosto || 'CC-01',
+        r.centroCosto?.nombre || r.client.centroCostoNombre || 'Operaciones',
+        r.puntoVenta?.codigo || r.client.codigoPunto || 'PV-01',
+        r.puntoVenta?.nombre || r.client.nombre,
+        r.puntoVenta?.ciudad || r.client.ciudad || 'Cali',
         r.client.direccion || 'N/A',
         r.client.contactoNombre || 'N/A',
         r.client.contactoTelefono || 'N/A',
@@ -395,7 +520,7 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
         r.client.tarifaHoraBase ?? 12500,
         r.client.observaciones || 'N/A',
         r.client.activo ? 'Activo' : 'Inactivo',
-        r.isNew ? 'Nuevo Creado' : 'Actualizado Existente',
+        r.isNew ? 'Nuevo Creado (3 Niveles)' : 'Actualizado Existente',
         new Date().toLocaleDateString('es-CO')
       ])
     ];
@@ -404,23 +529,27 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
     const ws = XLSX.utils.aoa_to_sheet(exportData);
 
     ws['!cols'] = [
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 38 },
-      { wch: 15 },
-      { wch: 35 },
-      { wch: 25 },
-      { wch: 18 },
-      { wch: 30 },
-      { wch: 22 },
-      { wch: 40 },
-      { wch: 15 },
-      { wch: 20 },
-      { wch: 16 }
+      { wch: 22 }, // ID
+      { wch: 32 }, // Empresa
+      { wch: 18 }, // NIT
+      { wch: 20 }, // Cod CC
+      { wch: 30 }, // Nombre CC
+      { wch: 18 }, // Cod PV
+      { wch: 30 }, // Nombre PV
+      { wch: 16 }, // Ciudad
+      { wch: 35 }, // Dirección
+      { wch: 22 }, // Contacto
+      { wch: 18 }, // Teléfono
+      { wch: 28 }, // Correo
+      { wch: 22 }, // Tarifa
+      { wch: 38 }, // Obs
+      { wch: 15 }, // Estado
+      { wch: 24 }, // Resultado
+      { wch: 16 }  // Fecha
     ];
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Clientes_Importados_SERGEM');
-    XLSX.writeFile(wb, `Reporte_Clientes_SERGEM_${Date.now()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Jerarquia_SERGEM_Cargada');
+    XLSX.writeFile(wb, `Reporte_Jerarquia_Empresas_CC_PV_SERGEM_${Date.now()}.xlsx`);
   };
 
   return (
@@ -573,10 +702,11 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
                         className="rounded text-red-600 focus:ring-red-500 cursor-pointer"
                       />
                     </th>
-                    <th className="py-2.5 px-3">Cliente / Razón Social</th>
-                    <th className="py-2.5 px-3">NIT / Identificación</th>
-                    <th className="py-2.5 px-3">Ciudad & Sede</th>
-                    <th className="py-2.5 px-3">Contacto / Correo</th>
+                    <th className="py-2.5 px-3">Empresa & NIT</th>
+                    <th className="py-2.5 px-3">Centro de Costo</th>
+                    <th className="py-2.5 px-3">Punto de Venta / Sede</th>
+                    <th className="py-2.5 px-3">Ciudad</th>
+                    <th className="py-2.5 px-3">Contacto / Supervisor</th>
                     <th className="py-2.5 px-3 text-right">Tarifa Base</th>
                     <th className="py-2.5 px-3 text-center">Estado</th>
                   </tr>
@@ -598,41 +728,71 @@ export const BulkClientUploadContent: React.FC<BulkClientUploadContentProps> = (
                           className="rounded text-red-600 focus:ring-red-500 cursor-pointer disabled:opacity-30"
                         />
                       </td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900">
-                        <div className="flex items-center space-x-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          <span>{row.nombre}</span>
-                        </div>
-                        {row.observaciones && (
-                          <div className="text-[10px] text-slate-500 truncate max-w-xs font-normal">
-                            {row.observaciones}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">{row.nit || '—'}</td>
+                      {/* Nivel 1: Empresa */}
                       <td className="py-2.5 px-3">
-                        <div className="font-medium text-slate-800">{row.ciudad}</div>
+                        <div className="font-bold text-slate-900 flex items-center space-x-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                          <span>{row.empresaNombre}</span>
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                          NIT: {row.nit || 'Sin NIT'}
+                        </div>
+                      </td>
+                      {/* Nivel 2: Centro de Costo */}
+                      <td className="py-2.5 px-3">
+                        <div className="inline-flex items-center space-x-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-semibold border border-slate-200">
+                          <Tag className="w-3 h-3 text-slate-500" />
+                          <span>{row.centroCostoCodigo}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 font-medium truncate max-w-[150px] mt-0.5">
+                          {row.centroCostoNombre}
+                        </div>
+                      </td>
+                      {/* Nivel 3: Punto de Venta */}
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold text-slate-900 flex items-center space-x-1">
+                          <Store className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span>{row.puntoVentaNombre}</span>
+                        </div>
                         {row.direccion && (
                           <div className="text-[10px] text-slate-500 truncate max-w-[160px]">
                             {row.direccion}
                           </div>
                         )}
+                        {row.observaciones && (
+                          <div className="text-[10px] text-amber-700 truncate max-w-[160px] italic">
+                            {row.observaciones}
+                          </div>
+                        )}
                       </td>
+                      {/* CIUDAD (Destacada en el Punto de Venta) */}
+                      <td className="py-2.5 px-3">
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-bold text-[11px]">
+                          <MapPin className="w-3 h-3 text-red-600" />
+                          <span>{row.ciudad}</span>
+                        </span>
+                      </td>
+                      {/* Contacto */}
                       <td className="py-2.5 px-3 text-slate-700">
-                        {row.contactoNombre && <div className="font-medium">{row.contactoNombre}</div>}
+                        {row.contactoNombre && <div className="font-medium text-slate-800">{row.contactoNombre}</div>}
+                        {row.contactoTelefono && (
+                          <div className="text-[10px] text-slate-500 flex items-center space-x-1">
+                            <Phone className="w-2.5 h-2.5 text-slate-400" />
+                            <span>{row.contactoTelefono}</span>
+                          </div>
+                        )}
                         {row.contactoEmail && (
-                          <div className="text-[10px] text-slate-500 truncate max-w-[150px]">
+                          <div className="text-[10px] text-slate-400 truncate max-w-[130px]">
                             {row.contactoEmail}
                           </div>
                         )}
-                        {row.contactoTelefono && (
-                          <div className="text-[10px] text-slate-400">{row.contactoTelefono}</div>
-                        )}
                         {!row.contactoNombre && !row.contactoEmail && !row.contactoTelefono && '—'}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">
+                      {/* Tarifa Base */}
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                         ${(row.tarifaHoraBase ?? 12500).toLocaleString('es-CO')}
                       </td>
+                      {/* Estado */}
                       <td className="py-2.5 px-3 text-center">
                         {row.isValid ? (
                           <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">

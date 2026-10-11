@@ -10,11 +10,15 @@ import * as XLSX from 'xlsx';
 export function downloadClientExcelTemplate(): void {
   const wb = XLSX.utils.book_new();
 
-  // Hoja 1: Clientes_SERGEM
+  // Hoja 1: Jerarquia_Clientes_SERGEM
   const clientsData = [
     [
-      'NIT / Identificación',
-      'Nombre o Razón Social *',
+      'NIT Empresa *',
+      'Razón Social / Empresa *',
+      'Código Centro Costo *',
+      'Nombre Centro Costo *',
+      'Código Punto Venta',
+      'Nombre Punto de Venta / Sede *',
       'Ciudad *',
       'Dirección de Sede / Muelle',
       'Nombre Supervisor / Contacto',
@@ -26,7 +30,11 @@ export function downloadClientExcelTemplate(): void {
     ],
     [
       '890.900.608-9',
-      'ALKOSTO CALI (HIPERAHORRO)',
+      'ALKOSTO CALI S.A.',
+      'CC-VALLE-01',
+      'Operación Logística Valle del Cauca',
+      'PV-PASOANCHO',
+      'Alkosto Pasoancho (Hiperahorro)',
       'Cali',
       'Av. Pasoancho # 80-120, Bodega 4',
       'Liceth Morales',
@@ -37,8 +45,28 @@ export function downloadClientExcelTemplate(): void {
       'Activo'
     ],
     [
+      '890.900.608-1',
+      'ALMACENES ÉXITO S.A.',
+      'CC-EXITO-CALI',
+      'Reparto Express y Última Milla',
+      'PV-CHIPICHAPE',
+      'Éxito Chipichape Sede Norte',
+      'Cali',
+      'Calle 38 Norte # 6N-35',
+      'Carlos Méndez',
+      '3168889911',
+      'despachos.chipichape@exito.com',
+      13000,
+      'Control de precintos y entrega con datáfono.',
+      'Activo'
+    ],
+    [
       '900.123.456-1',
-      'TCC LOGÍSTICA S.A.S. - VALLE',
+      'TCC LOGÍSTICA S.A.S.',
+      'CC-TCC-IND',
+      'Zona Industrial Acopi y Envíos Masivos',
+      'PV-ACOPI-01',
+      'Muelle Principal Acopi Yumbo',
       'Yumbo',
       'Zona Industrial Acopi, Calle 15 # 22-45',
       'Ing. Carlos Ruiz',
@@ -51,6 +79,10 @@ export function downloadClientExcelTemplate(): void {
     [
       '901.456.789-2',
       'DISTRIBUIDORA DE MEDICAMENTOS DEL VALLE S.A.S.',
+      'CC-FARMA-VALLE',
+      'Cadena de Frío y Farmacéutica',
+      'PV-DOLORES-12',
+      'Sede Parque Industrial La Dolores',
       'Palmira',
       'Parque Industrial La Dolores, Bodega 12',
       'Dra. Patricia Gómez',
@@ -65,49 +97,58 @@ export function downloadClientExcelTemplate(): void {
   const wsClients = XLSX.utils.aoa_to_sheet(clientsData);
 
   wsClients['!cols'] = [
-    { wch: 22 }, // NIT
-    { wch: 38 }, // Nombre
+    { wch: 18 }, // NIT Empresa
+    { wch: 34 }, // Razon Social Empresa
+    { wch: 22 }, // Cod Centro Costo
+    { wch: 34 }, // Nombre Centro Costo
+    { wch: 20 }, // Cod Punto Venta
+    { wch: 32 }, // Nombre Punto Venta
     { wch: 16 }, // Ciudad
-    { wch: 38 }, // Dirección
-    { wch: 28 }, // Contacto
+    { wch: 36 }, // Dirección
+    { wch: 26 }, // Contacto
     { wch: 20 }, // Teléfono
     { wch: 32 }, // Correo
-    { wch: 26 }, // Tarifa
+    { wch: 24 }, // Tarifa
     { wch: 45 }, // Observaciones
-    { wch: 18 }  // Estado
+    { wch: 16 }  // Estado
   ];
 
-  XLSX.utils.book_append_sheet(wb, wsClients, 'Clientes_SERGEM');
+  XLSX.utils.book_append_sheet(wb, wsClients, 'Jerarquia_Clientes_SERGEM');
 
-  // Hoja 2: Guia_y_Condiciones
+  // Hoja 2: Guia_Jerarquia_SERGEM
   const instructionsData = [
-    ['SERGEM MENSAJERÍA Y LOGÍSTICA S.A.S. - GUÍA DE CARGA MASIVA DE CLIENTES'],
-    ['Instrucciones para diligenciar la plantilla oficial de clientes corporativos:'],
+    ['SERGEM MENSAJERÍA Y LOGÍSTICA S.A.S. - GUÍA DE ESTRUCTURA Y CARGA JERÁRQUICA'],
+    ['Estructura organizacional oficial: 1. Empresa -> 2. Centro de Costo -> 3. Punto de Venta (con Ciudad)'],
     [''],
-    ['Campo', 'Obligatorio', 'Descripción y Formato', 'Ejemplo'],
-    ['NIT / Identificación', 'Opcional', 'Número de Identificación Tributaria con o sin guion', '890.900.608-9'],
-    ['Nombre o Razón Social', 'SÍ (Obligatorio)', 'Razón social completa o nombre comercial de la empresa cliente', 'ALKOSTO CALI'],
-    ['Ciudad', 'Recomendado', 'Ciudad sede de despacho (Cali, Yumbo, Palmira, Jamundí, etc.)', 'Cali'],
-    ['Dirección de Sede', 'Opcional', 'Dirección de bodega, muelle o sede administrativa', 'Av. Pasoancho # 80-120'],
-    ['Nombre Supervisor', 'Opcional', 'Persona encargada de coordinar los repartidores de SERGEM', 'Liceth Morales'],
-    ['Teléfono Celular', 'Opcional', 'Número móvil o fijo para contacto y notificaciones WhatsApp', '3154567890'],
-    ['Correo Electrónico', 'Opcional', 'Correo para envío de informes y novedades operativas', 'logistica@cliente.com'],
-    ['Tarifa Base por Hora', 'Opcional', 'Tarifa estándar acordada por hora de servicio (número sin puntos)', '12500'],
-    ['Observaciones', 'Opcional', 'Requisitos de EPP, horarios de descargue o restricciones', 'Uso obligatorio de chaleco'],
-    ['Estado', 'Opcional', 'Activo o Inactivo (por defecto Activo)', 'Activo'],
+    ['Nivel Jerárquico', 'Campo en Plantilla', 'Obligatorio', 'Descripción', 'Ejemplo'],
+    ['Nivel 1: EMPRESA', 'NIT Empresa', 'Recomendado', 'NIT tributario de la empresa cliente con o sin dígito de verificación', '890.900.608-9'],
+    ['Nivel 1: EMPRESA', 'Razón Social / Empresa', 'SÍ (Obligatorio)', 'Nombre legal o corporativo de la empresa', 'ALKOSTO CALI S.A.'],
+    ['Nivel 2: CENTRO DE COSTO', 'Código Centro Costo', 'SÍ (Obligatorio)', 'Código interno para imputación presupuestal y operativa', 'CC-VALLE-01'],
+    ['Nivel 2: CENTRO DE COSTO', 'Nombre Centro Costo', 'SÍ (Obligatorio)', 'Denominación de la línea, contrato o centro de costo', 'Operación Logística Valle'],
+    ['Nivel 3: PUNTO DE VENTA', 'Código Punto Venta', 'Opcional', 'Código o identificador de tienda, sucursal o muelle', 'PV-PASOANCHO'],
+    ['Nivel 3: PUNTO DE VENTA', 'Nombre Punto de Venta / Sede', 'SÍ (Obligatorio)', 'Sede física donde opera el repartidor o mensajero', 'Alkosto Pasoancho (Hiperahorro)'],
+    ['Nivel 3: PUNTO DE VENTA', 'Ciudad', 'SÍ (Obligatorio)', 'Ciudad de la sede (Cali, Yumbo, Palmira, Jamundí, Bogotá, Medellín, etc.)', 'Cali'],
+    ['Nivel 3: PUNTO DE VENTA', 'Dirección de Sede / Muelle', 'Opcional', 'Dirección física completa del muelle o punto de despacho', 'Av. Pasoancho # 80-120'],
+    ['Nivel 3: PUNTO DE VENTA', 'Nombre Supervisor', 'Opcional', 'Supervisor de tienda o contacto encargado', 'Liceth Morales'],
+    ['Nivel 3: PUNTO DE VENTA', 'Teléfono Celular (WhatsApp)', 'Opcional', 'Número móvil para enlace directo y llamadas', '3154567890'],
+    ['Nivel 3: PUNTO DE VENTA', 'Correo Electrónico', 'Opcional', 'Correo para remisiones e informes', 'logistica@alkosto.com.co'],
+    ['Nivel 3: PUNTO DE VENTA', 'Tarifa Base por Hora', 'Opcional', 'Tarifa acordada por hora de servicio (número sin puntos)', '12500'],
+    ['Nivel 3: PUNTO DE VENTA', 'Observaciones / EPP', 'Opcional', 'Requisitos de EPP, horarios de descargue o restricciones', 'Uso obligatorio de botas y chaleco'],
+    ['Nivel 3: PUNTO DE VENTA', 'Estado', 'Opcional', 'Activo o Inactivo', 'Activo'],
     [''],
-    ['Nota: Las 3 filas iniciales son de ejemplo y la plataforma las identifica automáticamente para desmarcarlas con un clic al importar.']
+    ['Nota: Al importar esta plantilla, el sistema de SERGEM creará o actualizará automáticamente los 3 niveles en Firestore.']
   ];
 
   const wsGuia = XLSX.utils.aoa_to_sheet(instructionsData);
   wsGuia['!cols'] = [
     { wch: 25 },
+    { wch: 28 },
     { wch: 18 },
-    { wch: 60 },
+    { wch: 55 },
     { wch: 28 }
   ];
 
-  XLSX.utils.book_append_sheet(wb, wsGuia, 'Guia_y_Condiciones');
+  XLSX.utils.book_append_sheet(wb, wsGuia, 'Guia_Jerarquia_SERGEM');
 
   // Generación binaria y descarga segura mediante Blob
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -117,7 +158,7 @@ export function downloadClientExcelTemplate(): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'Plantilla_Registro_Clientes_SERGEM.xlsx';
+  link.download = 'Plantilla_Registro_Empresas_CentrosCosto_PuntosVenta_SERGEM.xlsx';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

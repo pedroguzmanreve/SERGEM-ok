@@ -231,12 +231,91 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "repartidorId", "fecha", "estado"]
+    },
+    "Empresa": {
+      "title": "Empresa",
+      "description": "Nivel 1 de la jerarquía organizacional de SERGEM: Razón Social o Empresa cliente corporativa.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nit": { "type": "string" },
+        "nombre": { "type": "string" },
+        "contactoPrincipal": { "type": "string" },
+        "email": { "type": "string" },
+        "telefono": { "type": "string" },
+        "direccionSedePrincipal": { "type": "string" },
+        "ciudadPrincipal": { "type": "string" },
+        "activo": { "type": "boolean" },
+        "fechaCreacion": { "type": "string" },
+        "observaciones": { "type": "string" }
+      },
+      "required": ["id", "nit", "nombre", "activo", "fechaCreacion"]
+    },
+    "CentroCosto": {
+      "title": "CentroCosto",
+      "description": "Nivel 2 de la jerarquía organizacional de SERGEM: Centro de Costo operativo o financiero subordinado a una Empresa.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "empresaId": { "type": "string" },
+        "empresaNombre": { "type": "string" },
+        "codigo": { "type": "string" },
+        "nombre": { "type": "string" },
+        "responsable": { "type": "string" },
+        "telefono": { "type": "string" },
+        "email": { "type": "string" },
+        "presupuesto": { "type": "number" },
+        "activo": { "type": "boolean" },
+        "fechaCreacion": { "type": "string" },
+        "observaciones": { "type": "string" }
+      },
+      "required": ["id", "empresaId", "empresaNombre", "codigo", "nombre", "activo", "fechaCreacion"]
+    },
+    "PuntoVenta": {
+      "title": "PuntoVenta",
+      "description": "Nivel 3 de la jerarquía organizacional de SERGEM: Punto de Venta, Sede o Muelle físico subordinado a un Centro de Costo y con atributo CIUDAD.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "centroCostoId": { "type": "string" },
+        "centroCostoNombre": { "type": "string" },
+        "empresaId": { "type": "string" },
+        "empresaNombre": { "type": "string" },
+        "codigo": { "type": "string" },
+        "nombre": { "type": "string" },
+        "ciudad": { "type": "string" },
+        "direccion": { "type": "string" },
+        "supervisorContacto": { "type": "string" },
+        "telefonoContacto": { "type": "string" },
+        "emailContacto": { "type": "string" },
+        "tarifaHoraBase": { "type": "number" },
+        "observaciones": { "type": "string" },
+        "activo": { "type": "boolean" },
+        "fechaCreacion": { "type": "string" }
+      },
+      "required": ["id", "centroCostoId", "centroCostoNombre", "empresaId", "empresaNombre", "nombre", "ciudad", "activo", "fechaCreacion"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "Perfiles y roles de los usuarios autenticados del sistema."
+    },
+    "/companies/{companyId}": {
+      "schema": "Empresa",
+      "description": "Empresas corporativas clientes de SERGEM S.A.S. (Nivel 1)."
+    },
+    "/costCenters/{costCenterId}": {
+      "schema": "CentroCosto",
+      "description": "Centros de costo subordinados a las empresas (Nivel 2)."
+    },
+    "/pointsOfSale/{pointOfSaleId}": {
+      "schema": "PuntoVenta",
+      "description": "Puntos de venta, tiendas, sedes y muelles con su CIUDAD respectiva (Nivel 3)."
+    },
+    "/clients/{clientId}": {
+      "schema": "PuntoVenta",
+      "description": "Directorio unificado y compatibilidad de clientes."
     },
     "/employees/{employeeId}": {
       "schema": "Employee",

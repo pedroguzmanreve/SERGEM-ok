@@ -89,49 +89,63 @@ export function generateShiftScheduleExcel(
     'Cedula',
     'Nombre_Repartidor',
     'Semana_Inicio',
+    // Lunes
     'Lunes_Tipo',
     'Lunes_Cliente',
     'Lunes_Inicio1',
     'Lunes_Fin1',
     'Lunes_Inicio2',
     'Lunes_Fin2',
+    'Lunes_Observaciones',
+    // Martes
     'Martes_Tipo',
     'Martes_Cliente',
     'Martes_Inicio1',
     'Martes_Fin1',
     'Martes_Inicio2',
     'Martes_Fin2',
+    'Martes_Observaciones',
+    // Miércoles
     'Miercoles_Tipo',
     'Miercoles_Cliente',
     'Miercoles_Inicio1',
     'Miercoles_Fin1',
     'Miercoles_Inicio2',
     'Miercoles_Fin2',
+    'Miercoles_Observaciones',
+    // Jueves
     'Jueves_Tipo',
     'Jueves_Cliente',
     'Jueves_Inicio1',
     'Jueves_Fin1',
     'Jueves_Inicio2',
     'Jueves_Fin2',
+    'Jueves_Observaciones',
+    // Viernes
     'Viernes_Tipo',
     'Viernes_Cliente',
     'Viernes_Inicio1',
     'Viernes_Fin1',
     'Viernes_Inicio2',
     'Viernes_Fin2',
+    'Viernes_Observaciones',
+    // Sábado
     'Sabado_Tipo',
     'Sabado_Cliente',
     'Sabado_Inicio1',
     'Sabado_Fin1',
     'Sabado_Inicio2',
     'Sabado_Fin2',
+    'Sabado_Observaciones',
+    // Domingo
     'Domingo_Tipo',
     'Domingo_Cliente',
     'Domingo_Inicio1',
     'Domingo_Fin1',
     'Domingo_Inicio2',
     'Domingo_Fin2',
-    'Observaciones'
+    'Domingo_Observaciones',
+    'Observaciones_Generales'
   ];
 
   const clientSample1 = clients[0]?.nombre || 'Almacenes Éxito S.A.';
@@ -149,20 +163,20 @@ export function generateShiftScheduleExcel(
         `${rep.nombre} ${rep.apellido}`.trim(),
         targetWeek,
         // Lunes
-        'Continua', clientSample1, '07:00', '15:00', '', '',
+        'Continua', clientSample1, '07:00', '15:00', '', '', 'Llegar 10 min antes en sede principal',
         // Martes
-        'Partido', clientSample1, '07:00', '11:00', '14:00', '18:00',
+        'Partido', clientSample1, '07:00', '11:00', '14:00', '18:00', 'Ruta express norte y llevar datáfono',
         // Miércoles
-        'Continua', clientSample2, '07:00', '15:00', '', '',
+        'Continua', clientSample2, '07:00', '15:00', '', '', 'Verificar sellos de seguridad de paquetes',
         // Jueves
-        'Partido', clientSample2, '07:00', '11:00', '14:00', '18:00',
+        'Partido', clientSample2, '07:00', '11:00', '14:00', '18:00', 'Priorizar entregas prioritarias de farmacia',
         // Viernes
-        'Continua', clientSample1, '07:00', '15:00', '', '',
+        'Continua', clientSample1, '07:00', '15:00', '', '', 'Revisar combustible antes de iniciar ruta',
         // Sábado
-        'Continua', clientSample1, '08:00', '13:00', '', '',
+        'Continua', clientSample1, '08:00', '13:00', '', '', 'Turno reforzado de fin de semana',
         // Domingo
-        'Descanso', '', '', '', '', '',
-        'Turno estándar asignado'
+        'Descanso', '', '', '', '', '', 'Descanso dominical programado',
+        'Cumplir con EPP, dotación y documentación al día'
       ]);
     });
   } else {
@@ -172,19 +186,19 @@ export function generateShiftScheduleExcel(
       'Juan Camilo López',
       targetWeek,
       // Lunes
-      'Continua', clientSample1, '07:00', '15:00', '', '',
+      'Continua', clientSample1, '07:00', '15:00', '', '', 'Llegar 10 min antes en sede principal',
       // Martes
-      'Partido', clientSample1, '07:00', '11:00', '14:00', '18:00',
+      'Partido', clientSample1, '07:00', '11:00', '14:00', '18:00', 'Ruta express norte y llevar datáfono',
       // Miércoles
-      'Continua', clientSample2, '07:00', '15:00', '', '',
+      'Continua', clientSample2, '07:00', '15:00', '', '', 'Verificar sellos de seguridad de paquetes',
       // Jueves
-      'Partido', clientSample2, '07:00', '11:00', '14:00', '18:00',
+      'Partido', clientSample2, '07:00', '11:00', '14:00', '18:00', 'Priorizar entregas prioritarias de farmacia',
       // Viernes
-      'Continua', clientSample1, '07:00', '15:00', '', '',
+      'Continua', clientSample1, '07:00', '15:00', '', '', 'Revisar combustible antes de iniciar ruta',
       // Sábado
-      'Continua', clientSample1, '08:00', '13:00', '', '',
+      'Continua', clientSample1, '08:00', '13:00', '', '', 'Turno reforzado de fin de semana',
       // Domingo
-      'Descanso', '', '', '', '', '',
+      'Descanso', '', '', '', '', '', 'Descanso dominical programado',
       'Turno semanal zona norte'
     ]);
     rows.push([
@@ -192,39 +206,46 @@ export function generateShiftScheduleExcel(
       'Andrés Felipe Restrepo',
       targetWeek,
       // Lunes
-      'Partido', clientSample2, '08:00', '12:00', '15:00', '19:00',
+      'Partido', clientSample2, '08:00', '12:00', '15:00', '19:00', 'Entrega de medicamentos refrigerados',
       // Martes
-      'Continua', clientSample2, '07:00', '15:00', '', '',
+      'Continua', clientSample2, '07:00', '15:00', '', '', 'Ruta centros comerciales sur',
       // Miércoles
-      'Partido', clientSample1, '08:00', '12:00', '15:00', '19:00',
+      'Partido', clientSample1, '08:00', '12:00', '15:00', '19:00', 'Cobro contraentrega con datáfono',
       // Jueves
-      'Continua', clientSample1, '07:00', '15:00', '', '',
+      'Continua', clientSample1, '07:00', '15:00', '', '', 'Apoyo en despacho sede central',
       // Viernes
-      'Partido', clientSample2, '08:00', '12:00', '15:00', '19:00',
+      'Partido', clientSample2, '08:00', '12:00', '15:00', '19:00', 'Verificar direcciones con cliente',
       // Sábado
-      'Continua', clientSample2, '08:00', '14:00', '', '',
+      'Continua', clientSample2, '08:00', '14:00', '', '', 'Jornada continua fin de semana',
       // Domingo
-      'Descanso', '', '', '', '', '',
+      'Descanso', '', '', '', '', '', 'Descanso dominical programado',
       'Turno semanal zona sur'
     ]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
-  // Ancho de columnas para visualización cómoda en Excel
+  // Ancho de columnas para visualización cómoda en Excel (7 columnas por cada día)
   ws['!cols'] = [
     { wch: 14 }, // Cedula
     { wch: 26 }, // Nombre
     { wch: 14 }, // Semana_Inicio
-    // Días
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Lunes
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Martes
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Miércoles
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Jueves
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Viernes
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Sábado
-    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, // Domingo
-    { wch: 30 }  // Observaciones
+    // Lunes
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Martes
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Miércoles
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Jueves
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Viernes
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Sábado
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Domingo
+    { wch: 12 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 28 },
+    // Observaciones Generales
+    { wch: 32 }
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Plantilla_Turnos');
@@ -238,7 +259,9 @@ export function generateShiftScheduleExcel(
     ['3. Turno Partido:', 'Diligenciar HoraInicio1 - HoraFin1 (mañana) y HoraInicio2 - HoraFin2 (tarde)'],
     ['4. Turno Continuo:', 'Diligenciar únicamente HoraInicio1 y HoraFin1'],
     ['5. Descanso:', 'Colocar "Descanso" en el campo Tipo. Los campos de hora y cliente pueden quedar vacíos.'],
-    ['6. Cédula del Repartidor:', 'Si el repartidor ya existe en la plataforma, sus turnos se actualizarán automáticamente.'],
+    ['6. Columna de Observaciones / Recomendaciones en Cada Día:', 'Cada día incluye su columna "[Día]_Observaciones" para añadir recomendaciones específicas (ej: llegar antes, ruta express, llevar datáfono, sede asignada, etc.).'],
+    ['   Estas observaciones son visibles en tiempo real para el repartidor y el jefe de zona.'],
+    ['7. Cédula del Repartidor:', 'Si el repartidor ya existe en la plataforma, sus turnos se actualizarán automáticamente.'],
     ['   Si la cédula es nueva, el sistema registrará al repartidor automáticamente en el equipo.'],
     [''],
     ['LISTADO DE CLIENTES DISPONIBLES EN SERGEM:'],
@@ -410,8 +433,23 @@ export async function parseShiftScheduleExcel(
         const rawTipo = String(getVal(`${prefix}tipo`)).trim();
         const tipo = normalizeShiftType(rawTipo);
 
+        // Extraer observación / recomendación específica del día
+        const dayObs = String(
+          getVal(`${prefix}observacion`) ||
+          getVal(`${prefix}observaciones`) ||
+          getVal(`${prefix}recomendacion`) ||
+          getVal(`${prefix}recomendaciones`) ||
+          getVal(`${prefix}nota`) ||
+          getVal(`${prefix}notas`) ||
+          getVal(`${prefix}obs`) ||
+          ''
+        ).trim();
+
         if (tipo === 'Descanso') {
-          dias[day] = { tipo: 'Descanso' };
+          dias[day] = {
+            tipo: 'Descanso',
+            observaciones: dayObs || undefined,
+          };
           return;
         }
 
@@ -420,7 +458,16 @@ export async function parseShiftScheduleExcel(
         const hFin1 = formatExcelTime(getVal(`${prefix}fin1`), tipo === 'Partido' ? '11:00' : '15:00');
         const hIni2 = tipo === 'Partido' ? formatExcelTime(getVal(`${prefix}inicio2`), '14:00') : undefined;
         const hFin2 = tipo === 'Partido' ? formatExcelTime(getVal(`${prefix}fin2`), '18:00') : undefined;
-        const obs = String(getVal(`${prefix}observacion`) || row['Observaciones'] || '').trim();
+
+        // Si el día no tiene observación específica, revisar si hay una nota global
+        const globalObs = String(
+          row['Observaciones_Generales'] ||
+          row['ObservacionesGenerales'] ||
+          row['Observaciones'] ||
+          ''
+        ).trim();
+
+        const obs = dayObs || globalObs;
 
         const shift: ShiftDetails = {
           tipo,
@@ -515,8 +562,21 @@ export async function parseShiftScheduleExcel(
       else if (rawDia.includes('dom')) matchedDay = 'Domingo';
 
       const tipo = normalizeShiftType(String(row['Tipo'] || row['TipoTurno'] || ''));
+      const rowObs = String(
+        row['Observaciones'] ||
+        row['Observacion'] ||
+        row['Recomendaciones'] ||
+        row['Recomendacion'] ||
+        row['Nota'] ||
+        row['Notas'] ||
+        ''
+      ).trim();
+
       if (tipo === 'Descanso') {
-        sched.dias[matchedDay] = { tipo: 'Descanso' };
+        sched.dias[matchedDay] = {
+          tipo: 'Descanso',
+          observaciones: rowObs || undefined,
+        };
       } else {
         sched.dias[matchedDay] = {
           tipo,
@@ -525,7 +585,7 @@ export async function parseShiftScheduleExcel(
           horaFin1: formatExcelTime(row['HoraFin1'] || row['Fin1'], tipo === 'Partido' ? '11:00' : '15:00'),
           horaInicio2: tipo === 'Partido' ? formatExcelTime(row['HoraInicio2'] || row['Inicio2'], '14:00') : undefined,
           horaFin2: tipo === 'Partido' ? formatExcelTime(row['HoraFin2'] || row['Fin2'], '18:00') : undefined,
-          observaciones: String(row['Observaciones'] || '').trim() || undefined,
+          observaciones: rowObs || undefined,
         };
       }
     });

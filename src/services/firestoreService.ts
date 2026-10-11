@@ -19,7 +19,10 @@ import {
   EmployeeNovedades,
   AppUserProfile,
   DriverAttendanceRecord,
-  CompanyClient
+  CompanyClient,
+  Empresa,
+  CentroCosto,
+  PuntoVenta
 } from '../types/payroll';
 
 // Collections References
@@ -33,6 +36,9 @@ const PERIODS_COLLECTION = 'periods';
 const SETTINGS_COLLECTION = 'settings';
 const NOVEDADES_MAP_COLLECTION = 'periodNovedades';
 const CLIENTS_COLLECTION = 'clients';
+const COMPANIES_COLLECTION = 'companies';
+const COST_CENTERS_COLLECTION = 'costCenters';
+const POINTS_OF_SALE_COLLECTION = 'pointsOfSale';
 
 export enum OperationType {
   CREATE = 'create',
@@ -332,6 +338,63 @@ export const subscribeClients = (onData: (data: CompanyClient[]) => void, onErro
   );
 };
 
+// Suscripción a Empresas (Nivel 1 de la jerarquía)
+export const subscribeCompanies = (onData: (data: Empresa[]) => void, onError?: (err: Error) => void) => {
+  const colRef = collection(db, COMPANIES_COLLECTION);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: Empresa[] = [];
+      snapshot.forEach((d) => {
+        list.push(d.data() as Empresa);
+      });
+      onData(list);
+    },
+    (error) => {
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "companies":', error);
+      if (onError) onError(error);
+    }
+  );
+};
+
+// Suscripción a Centros de Costo (Nivel 2 de la jerarquía)
+export const subscribeCostCenters = (onData: (data: CentroCosto[]) => void, onError?: (err: Error) => void) => {
+  const colRef = collection(db, COST_CENTERS_COLLECTION);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: CentroCosto[] = [];
+      snapshot.forEach((d) => {
+        list.push(d.data() as CentroCosto);
+      });
+      onData(list);
+    },
+    (error) => {
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "costCenters":', error);
+      if (onError) onError(error);
+    }
+  );
+};
+
+// Suscripción a Puntos de Venta (Nivel 3 de la jerarquía con CIUDAD)
+export const subscribePointsOfSale = (onData: (data: PuntoVenta[]) => void, onError?: (err: Error) => void) => {
+  const colRef = collection(db, POINTS_OF_SALE_COLLECTION);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: PuntoVenta[] = [];
+      snapshot.forEach((d) => {
+        list.push(d.data() as PuntoVenta);
+      });
+      onData(list);
+    },
+    (error) => {
+      console.error('❌ [Firestore Connection Error] Error al leer la colección "pointsOfSale":', error);
+      if (onError) onError(error);
+    }
+  );
+};
+
 // ==============================================================================
 // 3. FUNCIONES DE GUARDADO Y ESCRITURA (MANEJO DE ERRORES EXPLÍCITO)
 // ==============================================================================
@@ -351,6 +414,66 @@ export const deleteClientFromFirestore = async (clientId: string): Promise<void>
     await deleteDoc(doc(db, CLIENTS_COLLECTION, clientId));
   } catch (err) {
     console.error(`❌ [Firestore Delete Error] Falló la eliminación del cliente "${clientId}" de Firestore:`, err);
+    throw err;
+  }
+};
+
+// Métodos CRUD para Empresas
+export const saveCompanyToFirestore = async (empresa: Empresa): Promise<void> => {
+  try {
+    const cleaned = cleanForFirestore(empresa);
+    await setDoc(doc(db, COMPANIES_COLLECTION, empresa.id), cleaned, { merge: true });
+  } catch (err) {
+    console.error(`❌ [Firestore Write Error] Falló el guardado de la empresa "${empresa.id}" en Firestore:`, err);
+    throw err;
+  }
+};
+
+export const deleteCompanyFromFirestore = async (empresaId: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, COMPANIES_COLLECTION, empresaId));
+  } catch (err) {
+    console.error(`❌ [Firestore Delete Error] Falló la eliminación de la empresa "${empresaId}" de Firestore:`, err);
+    throw err;
+  }
+};
+
+// Métodos CRUD para Centros de Costo
+export const saveCostCenterToFirestore = async (centroCosto: CentroCosto): Promise<void> => {
+  try {
+    const cleaned = cleanForFirestore(centroCosto);
+    await setDoc(doc(db, COST_CENTERS_COLLECTION, centroCosto.id), cleaned, { merge: true });
+  } catch (err) {
+    console.error(`❌ [Firestore Write Error] Falló el guardado del centro de costo "${centroCosto.id}" en Firestore:`, err);
+    throw err;
+  }
+};
+
+export const deleteCostCenterFromFirestore = async (centroCostoId: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, COST_CENTERS_COLLECTION, centroCostoId));
+  } catch (err) {
+    console.error(`❌ [Firestore Delete Error] Falló la eliminación del centro de costo "${centroCostoId}" de Firestore:`, err);
+    throw err;
+  }
+};
+
+// Métodos CRUD para Puntos de Venta
+export const savePointOfSaleToFirestore = async (puntoVenta: PuntoVenta): Promise<void> => {
+  try {
+    const cleaned = cleanForFirestore(puntoVenta);
+    await setDoc(doc(db, POINTS_OF_SALE_COLLECTION, puntoVenta.id), cleaned, { merge: true });
+  } catch (err) {
+    console.error(`❌ [Firestore Write Error] Falló el guardado del punto de venta "${puntoVenta.id}" en Firestore:`, err);
+    throw err;
+  }
+};
+
+export const deletePointOfSaleFromFirestore = async (puntoVentaId: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, POINTS_OF_SALE_COLLECTION, puntoVentaId));
+  } catch (err) {
+    console.error(`❌ [Firestore Delete Error] Falló la eliminación del punto de venta "${puntoVentaId}" de Firestore:`, err);
     throw err;
   }
 };
@@ -525,6 +648,9 @@ export const clearAllFirestoreCollections = async (): Promise<{ success: boolean
     NOVEDADES_MAP_COLLECTION,
     PERIODS_COLLECTION,
     CLIENTS_COLLECTION,
+    COMPANIES_COLLECTION,
+    COST_CENTERS_COLLECTION,
+    POINTS_OF_SALE_COLLECTION,
   ];
 
   let deletedCount = 0;

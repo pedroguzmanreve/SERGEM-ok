@@ -68,8 +68,16 @@ export type ShiftType = 'Continua' | 'Partido' | 'Medio Tiempo Mañana' | 'Medio
 
 export interface ShiftDetails {
   tipo: ShiftType;
-  clienteNombre?: string; // Cliente / Sede asignada (e.g. "Almacenes Éxito S.A.")
+  clienteNombre?: string; // Nombre visible / Sede asignada (e.g. "Almacenes Éxito S.A." o "Éxito Chipichape")
   clienteId?: string;
+  // Jerarquía Organizacional SERGEM
+  empresaId?: string;
+  empresaNombre?: string;
+  centroCostoId?: string;
+  centroCostoNombre?: string;
+  puntoVentaId?: string;
+  puntoVentaNombre?: string;
+  ciudad?: string;
   // Jornada Continua o Mañana
   horaInicio1?: string; // e.g. "07:00"
   horaFin1?: string; // e.g. "15:00" o "12:00"
@@ -112,6 +120,13 @@ export interface ClientOrderReport {
   id: string;
   clienteId: string;
   nombreCliente: string;
+  empresaId?: string;
+  empresaNombre?: string;
+  centroCostoId?: string;
+  centroCostoNombre?: string;
+  puntoVentaId?: string;
+  puntoVentaNombre?: string;
+  ciudad?: string;
   repartidorId: string;
   nombreRepartidor: string;
   placaVehiculo: string;
@@ -127,6 +142,67 @@ export interface ClientOrderReport {
   observacionesSalida?: string;
 }
 
+/**
+ * Nivel 1: Empresa / Razón Social Corporativa (e.g. Almacenes Éxito S.A., Alkosto)
+ */
+export interface Empresa {
+  id: string;
+  nit: string;
+  nombre: string; // Razón Social o Nombre Corporativo
+  contactoPrincipal?: string;
+  email?: string;
+  telefono?: string;
+  direccionSedePrincipal?: string;
+  ciudadPrincipal?: string;
+  activo: boolean;
+  fechaCreacion: string;
+  observaciones?: string;
+}
+
+/**
+ * Nivel 2: Centro de Costo (e.g. Operaciones Mensajería Cali, Ecommerce Valle)
+ */
+export interface CentroCosto {
+  id: string;
+  empresaId: string;
+  empresaNombre: string;
+  codigo: string; // Código alfanumérico (e.g. CC-101, LOG-01)
+  nombre: string; // Nombre del Centro de Costo
+  responsable?: string;
+  telefono?: string;
+  email?: string;
+  presupuesto?: number;
+  activo: boolean;
+  fechaCreacion: string;
+  observaciones?: string;
+}
+
+/**
+ * Nivel 3: Punto de Venta / Sede / Muelle (e.g. Éxito Chipichape, Alkosto Pasoancho)
+ * Incluye la CIUDAD oficial de operación.
+ */
+export interface PuntoVenta {
+  id: string;
+  centroCostoId: string;
+  centroCostoNombre: string;
+  empresaId: string;
+  empresaNombre: string;
+  codigo?: string; // Código de Punto / Sede (e.g. PV-04)
+  nombre: string; // Nombre de la sede / tienda / muelle
+  ciudad: string; // CIUDAD (e.g. Cali, Yumbo, Palmira, Jamundí, Bogotá, etc.)
+  direccion?: string;
+  supervisorContacto?: string;
+  telefonoContacto?: string;
+  emailContacto?: string;
+  tarifaHoraBase?: number;
+  observaciones?: string;
+  activo: boolean;
+  fechaCreacion: string;
+}
+
+/**
+ * Estructura de compatibilidad y cliente unificado
+ */
 export interface CompanyClient {
   id: string;
   nombre: string;
@@ -140,6 +216,13 @@ export interface CompanyClient {
   observaciones?: string;
   activo: boolean;
   fechaCreacion: string;
+  // Campos de enlace jerárquico
+  empresaId?: string;
+  empresaNombre?: string;
+  centroCostoId?: string;
+  centroCostoNombre?: string;
+  codigoPunto?: string;
+  codigoCentroCosto?: string;
 }
 
 export interface HoursNovedades {

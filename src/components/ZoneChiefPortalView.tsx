@@ -10,6 +10,9 @@ import {
   DriverAttendanceRecord,
   ClientOrderReport,
   CompanyClient,
+  Empresa,
+  CentroCosto,
+  PuntoVenta,
 } from '../types/payroll';
 import { UnconnectedDriversSection } from './UnconnectedDriversSection';
 import {
@@ -54,6 +57,9 @@ interface ZoneChiefPortalViewProps {
   attendanceRecords?: DriverAttendanceRecord[];
   clientReports?: ClientOrderReport[];
   clients?: CompanyClient[];
+  companies?: Empresa[];
+  costCenters?: CentroCosto[];
+  pointsOfSale?: PuntoVenta[];
   onSaveSchedule: (schedule: WeeklySchedule) => void;
   onDeleteSchedule: (scheduleId: string) => void;
   onAddNovedad: (novedad: ZoneChiefNovedad) => void;
@@ -93,6 +99,9 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
   attendanceRecords = [],
   clientReports = [],
   clients = [],
+  companies = [],
+  costCenters = [],
+  pointsOfSale = [],
   onSaveSchedule,
   onDeleteSchedule,
   onAddNovedad,
@@ -737,6 +746,17 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                                   </span>
                                 </div>
                               )}
+
+                              {/* Daily Recommendation / Observation Badge */}
+                              {shift?.observaciones && (
+                                <div
+                                  className="mt-1 flex items-start gap-1 bg-amber-50 text-amber-900 border border-amber-200/80 px-1.5 py-1 rounded-lg text-[10px] font-medium leading-tight shadow-2xs"
+                                  title={`Recomendación: ${shift.observaciones}`}
+                                >
+                                  <span className="shrink-0 text-[11px]">💡</span>
+                                  <span className="truncate font-semibold">{shift.observaciones}</span>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -958,7 +978,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                 <div className="bg-white p-3 rounded-xl border border-emerald-100 text-[11px] text-slate-600 space-y-1">
                   <div className="font-bold text-emerald-900">Incluye en el archivo:</div>
                   <ul className="list-disc pl-4 space-y-0.5 text-slate-500">
-                    <li>Hoja 1: Matriz semanal de Lunes a Domingo por repartidor</li>
+                    <li>Hoja 1: Matriz semanal de Lunes a Domingo por repartidor con columna de observaciones/recomendaciones por cada día</li>
                     <li>Hoja 2: Guía de tipos de turno válidos y códigos de clientes</li>
                   </ul>
                 </div>
@@ -1297,19 +1317,66 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                                 onChange={(e) => handleShiftTimeChange(day, 'clienteNombre', e.target.value)}
                                 className="w-full p-2 border border-slate-300 rounded-lg font-bold bg-white text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                               >
-                                {STANDARD_CLIENTS.map((cli) => (
-                                  <option key={cli} value={cli}>
-                                    {cli}
-                                  </option>
-                                ))}
+                                {pointsOfSale && pointsOfSale.length > 0 ? (
+                                  <>
+                                    <optgroup label="📍 Puntos de Venta (con Ciudad)">
+                                      {pointsOfSale.map((pv) => (
+                                        <option key={pv.id} value={`${pv.nombre} (${pv.ciudad})`}>
+                                          {pv.nombre} ({pv.ciudad}) • {pv.empresaNombre}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                    <optgroup label="🏢 Empresas y Cuentas Principales">
+                                      {STANDARD_CLIENTS.map((cli) => (
+                                        <option key={cli} value={cli}>
+                                          {cli}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  </>
+                                ) : clients && clients.length > 0 ? (
+                                  <>
+                                    <optgroup label="📍 Directorio de Sedes / Clientes">
+                                      {clients.map((c) => (
+                                        <option key={c.id} value={c.ciudad ? `${c.nombre} (${c.ciudad})` : c.nombre}>
+                                          {c.nombre} {c.ciudad ? `(${c.ciudad})` : ''}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                    <optgroup label="🏢 Clientes Estándar">
+                                      {STANDARD_CLIENTS.map((cli) => (
+                                        <option key={cli} value={cli}>
+                                          {cli}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  </>
+                                ) : (
+                                  STANDARD_CLIENTS.map((cli) => (
+                                    <option key={cli} value={cli}>
+                                      {cli}
+                                    </option>
+                                  ))
+                                )}
                               </select>
                               <input
                                 type="text"
-                                placeholder="O nombre de cliente personalizado..."
+                                list={`datalist-puntos-${day}`}
+                                placeholder="O punto de venta personalizado..."
                                 value={shift.clienteNombre || ''}
                                 onChange={(e) => handleShiftTimeChange(day, 'clienteNombre', e.target.value)}
                                 className="w-full p-2 border border-slate-300 rounded-lg font-semibold bg-white text-xs text-slate-800 placeholder:text-slate-400"
                               />
+                              <datalist id={`datalist-puntos-${day}`}>
+                                {pointsOfSale.map((pv) => (
+                                  <option key={pv.id} value={`${pv.nombre} (${pv.ciudad})`}>
+                                    {pv.empresaNombre} • {pv.centroCostoNombre}
+                                  </option>
+                                ))}
+                                {clients.map((c) => (
+                                  <option key={c.id} value={c.ciudad ? `${c.nombre} (${c.ciudad})` : c.nombre} />
+                                ))}
+                              </datalist>
                             </div>
                           </div>
 
@@ -1364,12 +1431,13 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
                           </div>
 
                           <div className="pt-2 border-t border-slate-200/60">
-                            <label className="block text-[10px] font-bold text-slate-500 mb-1">
-                              Observaciones / Ruta / Sede Operativa
+                            <label className="block text-[10px] font-bold text-slate-500 mb-1 flex items-center gap-1">
+                              <span>💡</span>
+                              <span>Observaciones / Recomendaciones del Día</span>
                             </label>
                             <input
                               type="text"
-                              placeholder="Ej: Ruta Cali Norte, Chipichape, Paquetera Yumbo..."
+                              placeholder="Ej: Llegar 10 min antes, ruta express Chipichape, llevar datáfono..."
                               value={shift.observaciones || ''}
                               onChange={(e) => handleShiftTimeChange(day, 'observaciones', e.target.value)}
                               className="w-full p-1.5 border border-slate-300 rounded-lg bg-white text-xs font-medium text-slate-800 placeholder:text-slate-400"

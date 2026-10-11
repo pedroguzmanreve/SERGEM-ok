@@ -628,6 +628,19 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                       ) : (
                         <p className="text-xs text-slate-400 font-semibold italic py-2">Día Libre de Descanso</p>
                       )}
+
+                      {/* Recomendación / Observación del día */}
+                      {dayData?.observaciones && (
+                        <div className="mt-2 bg-amber-50/90 border border-amber-200/90 rounded-xl p-2 text-amber-900 shadow-2xs">
+                          <div className="flex items-center space-x-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-800">
+                            <span>💡</span>
+                            <span>Recomendación:</span>
+                          </div>
+                          <p className="text-[11px] font-medium leading-snug mt-0.5 break-words">
+                            {dayData.observaciones}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

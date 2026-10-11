@@ -10,6 +10,9 @@ import {
   ClientOrderReport,
   DriverAttendanceRecord,
   CompanyClient,
+  Empresa,
+  CentroCosto,
+  PuntoVenta,
   AppRole
 } from './types/payroll';
 import {
@@ -25,6 +28,9 @@ import {
   subscribeCompanySettings,
   subscribeDriverAttendance,
   subscribeClients,
+  subscribeCompanies,
+  subscribeCostCenters,
+  subscribePointsOfSale,
   saveEmployeeToFirestore,
   saveScheduleToFirestore,
   saveZoneNovedadToFirestore,
@@ -35,6 +41,12 @@ import {
   saveDriverAttendanceToFirestore,
   saveClientToFirestore,
   deleteClientFromFirestore,
+  saveCompanyToFirestore,
+  deleteCompanyFromFirestore,
+  saveCostCenterToFirestore,
+  deleteCostCenterFromFirestore,
+  savePointOfSaleToFirestore,
+  deletePointOfSaleFromFirestore,
   seedInitialDatabase,
   clearAllFirestoreCollections
 } from './services/firestoreService';
@@ -76,6 +88,9 @@ export default function App() {
   const [clientReports, setClientReports] = useState<ClientOrderReport[]>([]);
   const [driverAttendance, setDriverAttendance] = useState<DriverAttendanceRecord[]>([]);
   const [clients, setClients] = useState<CompanyClient[]>([]);
+  const [companies, setCompanies] = useState<Empresa[]>([]);
+  const [costCenters, setCostCenters] = useState<CentroCosto[]>([]);
+  const [pointsOfSale, setPointsOfSale] = useState<PuntoVenta[]>([]);
 
   // Firebase status
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
@@ -139,6 +154,24 @@ export default function App() {
       }
     });
 
+    const unsubCompanies = subscribeCompanies((data) => {
+      if (isMounted) {
+        setCompanies(data || []);
+      }
+    });
+
+    const unsubCostCenters = subscribeCostCenters((data) => {
+      if (isMounted) {
+        setCostCenters(data || []);
+      }
+    });
+
+    const unsubPointsOfSale = subscribePointsOfSale((data) => {
+      if (isMounted) {
+        setPointsOfSale(data || []);
+      }
+    });
+
     return () => {
       isMounted = false;
       unsubEmp();
@@ -149,6 +182,9 @@ export default function App() {
       unsubCompany();
       unsubAttendance();
       unsubClients();
+      unsubCompanies();
+      unsubCostCenters();
+      unsubPointsOfSale();
     };
   }, []);
 
@@ -368,6 +404,125 @@ export default function App() {
     }
   };
 
+  const handleSaveCompany = async (empresa: Empresa) => {
+    setIsSyncing(true);
+    try {
+      await saveCompanyToFirestore(empresa);
+      setCompanies((prev) => {
+        const idx = prev.findIndex((c) => c.id === empresa.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = empresa;
+          return copy;
+        }
+        return [empresa, ...prev];
+      });
+    } catch (e) {
+      console.warn('Error saving empresa to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteCompany = async (empresaId: string) => {
+    setIsSyncing(true);
+    try {
+      await deleteCompanyFromFirestore(empresaId);
+      setCompanies((prev) => prev.filter((c) => c.id !== empresaId));
+    } catch (e) {
+      console.warn('Error deleting empresa from Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSaveCostCenter = async (centroCosto: CentroCosto) => {
+    setIsSyncing(true);
+    try {
+      await saveCostCenterToFirestore(centroCosto);
+      setCostCenters((prev) => {
+        const idx = prev.findIndex((c) => c.id === centroCosto.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = centroCosto;
+          return copy;
+        }
+        return [centroCosto, ...prev];
+      });
+    } catch (e) {
+      console.warn('Error saving cost center to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteCostCenter = async (centroCostoId: string) => {
+    setIsSyncing(true);
+    try {
+      await deleteCostCenterFromFirestore(centroCostoId);
+      setCostCenters((prev) => prev.filter((c) => c.id !== centroCostoId));
+    } catch (e) {
+      console.warn('Error deleting cost center from Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSavePointOfSale = async (puntoVenta: PuntoVenta) => {
+    setIsSyncing(true);
+    try {
+      await savePointOfSaleToFirestore(puntoVenta);
+      setPointsOfSale((prev) => {
+        const idx = prev.findIndex((c) => c.id === puntoVenta.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = puntoVenta;
+          return copy;
+        }
+        return [puntoVenta, ...prev];
+      });
+
+      // También mantener sincronizado en clients
+      const clientCompatible: CompanyClient = {
+        id: puntoVenta.id,
+        nombre: puntoVenta.nombre !== puntoVenta.empresaNombre ? `${puntoVenta.empresaNombre} - ${puntoVenta.nombre}` : puntoVenta.nombre,
+        nit: undefined,
+        ciudad: puntoVenta.ciudad,
+        direccion: puntoVenta.direccion,
+        contactoNombre: puntoVenta.supervisorContacto,
+        contactoTelefono: puntoVenta.telefonoContacto,
+        contactoEmail: puntoVenta.emailContacto,
+        tarifaHoraBase: puntoVenta.tarifaHoraBase,
+        observaciones: puntoVenta.observaciones,
+        activo: puntoVenta.activo,
+        fechaCreacion: puntoVenta.fechaCreacion,
+        empresaId: puntoVenta.empresaId,
+        empresaNombre: puntoVenta.empresaNombre,
+        centroCostoId: puntoVenta.centroCostoId,
+        centroCostoNombre: puntoVenta.centroCostoNombre,
+        codigoPunto: puntoVenta.codigo,
+      };
+      await saveClientToFirestore(clientCompatible);
+    } catch (e) {
+      console.warn('Error saving punto de venta to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDeletePointOfSale = async (puntoVentaId: string) => {
+    setIsSyncing(true);
+    try {
+      await deletePointOfSaleFromFirestore(puntoVentaId);
+      setPointsOfSale((prev) => prev.filter((c) => c.id !== puntoVentaId));
+      await deleteClientFromFirestore(puntoVentaId);
+    } catch (e) {
+      console.warn('Error deleting punto de venta from Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleWipeEntireDatabase = async () => {
     try {
       setIsSyncing(true);
@@ -378,6 +533,9 @@ export default function App() {
       setClientReports([]);
       setDriverAttendance([]);
       setClients([]);
+      setCompanies([]);
+      setCostCenters([]);
+      setPointsOfSale([]);
       setNovedadesMap({});
     } catch (e) {
       console.warn('Error clearing entire database:', e);
@@ -400,6 +558,9 @@ export default function App() {
         clientReports={clientReports}
         driverAttendance={driverAttendance}
         clients={clients}
+        companies={companies}
+        costCenters={costCenters}
+        pointsOfSale={pointsOfSale}
         handleRecordAttendance={handleRecordAttendance}
         isFirebaseConnected={isFirebaseConnected}
         isSyncing={isSyncing}
@@ -419,6 +580,12 @@ export default function App() {
         handleDeleteClientReport={handleDeleteClientReport}
         handleSaveClient={handleSaveClient}
         handleDeleteClient={handleDeleteClient}
+        handleSaveCompany={handleSaveCompany}
+        handleDeleteCompany={handleDeleteCompany}
+        handleSaveCostCenter={handleSaveCostCenter}
+        handleDeleteCostCenter={handleDeleteCostCenter}
+        handleSavePointOfSale={handleSavePointOfSale}
+        handleDeletePointOfSale={handleDeletePointOfSale}
         handleSaveCompanySettings={handleSaveCompanySettings}
         handleAddPeriod={handleAddPeriod}
         handleSaveNovedades={handleSaveNovedades}
@@ -439,6 +606,9 @@ interface AppContentProps {
   clientReports: ClientOrderReport[];
   driverAttendance: DriverAttendanceRecord[];
   clients: CompanyClient[];
+  companies: Empresa[];
+  costCenters: CentroCosto[];
+  pointsOfSale: PuntoVenta[];
   handleRecordAttendance: (record: DriverAttendanceRecord) => void;
   isFirebaseConnected: boolean;
   isSyncing: boolean;
@@ -458,6 +628,12 @@ interface AppContentProps {
   handleDeleteClientReport: (id: string) => void;
   handleSaveClient: (client: CompanyClient) => Promise<void>;
   handleDeleteClient: (clientId: string) => Promise<void>;
+  handleSaveCompany: (empresa: Empresa) => Promise<void>;
+  handleDeleteCompany: (empresaId: string) => Promise<void>;
+  handleSaveCostCenter: (centroCosto: CentroCosto) => Promise<void>;
+  handleDeleteCostCenter: (centroCostoId: string) => Promise<void>;
+  handleSavePointOfSale: (puntoVenta: PuntoVenta) => Promise<void>;
+  handleDeletePointOfSale: (puntoVentaId: string) => Promise<void>;
   handleSaveCompanySettings: (settings: CompanySettings) => void;
   handleAddPeriod: (period: PayrollPeriod) => void;
   handleSaveNovedades: (empId: string, novs: EmployeeNovedades) => void;
@@ -475,6 +651,9 @@ function AppContent({
   clientReports,
   driverAttendance,
   clients,
+  companies,
+  costCenters,
+  pointsOfSale,
   handleRecordAttendance,
   isFirebaseConnected,
   isSyncing,
@@ -494,6 +673,12 @@ function AppContent({
   handleDeleteClientReport,
   handleSaveClient,
   handleDeleteClient,
+  handleSaveCompany,
+  handleDeleteCompany,
+  handleSaveCostCenter,
+  handleDeleteCostCenter,
+  handleSavePointOfSale,
+  handleDeletePointOfSale,
   handleSaveCompanySettings,
   handleAddPeriod,
   handleSaveNovedades,
@@ -678,6 +863,9 @@ function AppContent({
             attendanceRecords={driverAttendance}
             clientReports={clientReports}
             clients={clients}
+            companies={companies}
+            costCenters={costCenters}
+            pointsOfSale={pointsOfSale}
             onSaveSchedule={handleSaveSchedule}
             onDeleteSchedule={handleDeleteSchedule}
             onAddNovedad={handleAddZoneNovedad}
@@ -712,8 +900,17 @@ function AppContent({
             schedules={schedules}
             company={company}
             clients={clients}
+            companies={companies}
+            costCenters={costCenters}
+            pointsOfSale={pointsOfSale}
             onSaveClient={handleSaveClient}
             onDeleteClient={handleDeleteClient}
+            onSaveCompany={handleSaveCompany}
+            onDeleteCompany={handleDeleteCompany}
+            onSaveCostCenter={handleSaveCostCenter}
+            onDeleteCostCenter={handleDeleteCostCenter}
+            onSavePointOfSale={handleSavePointOfSale}
+            onDeletePointOfSale={handleDeletePointOfSale}
             onAddClientReport={handleAddClientReport}
             onDeleteClientReport={handleDeleteClientReport}
           />
