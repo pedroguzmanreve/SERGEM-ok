@@ -77,6 +77,7 @@ export function buildEmployeeInvite(
     role: employee.rol,
     invite_email: employee.email || '',
     emp_id: employee.id || '',
+    cedula: employee.cedula || '',
     emp_name: `${employee.nombre} ${employee.apellido}`,
     token: token,
   });

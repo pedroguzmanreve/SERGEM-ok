@@ -18,7 +18,9 @@ import { UnconnectedDriversSection } from './UnconnectedDriversSection';
 import {
   getCurrentDateTimeInfo,
   buildCallLink,
-  buildDriverShiftWhatsAppLink
+  buildDriverShiftWhatsAppLink,
+  getMondayOfDate,
+  normalizeExcelWeekDate
 } from '../utils/attendanceService';
 import {
   generateShiftScheduleExcel,
@@ -61,6 +63,7 @@ interface ZoneChiefPortalViewProps {
   costCenters?: CentroCosto[];
   pointsOfSale?: PuntoVenta[];
   onSaveSchedule: (schedule: WeeklySchedule) => void;
+  onSaveBatchSchedules?: (batch: WeeklySchedule[], newEmployees?: Employee[]) => Promise<void> | void;
   onDeleteSchedule: (scheduleId: string) => void;
   onAddNovedad: (novedad: ZoneChiefNovedad) => void;
   onDeleteNovedad: (novedadId: string) => void;
@@ -103,6 +106,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
   costCenters = [],
   pointsOfSale = [],
   onSaveSchedule,
+  onSaveBatchSchedules,
   onDeleteSchedule,
   onAddNovedad,
   onDeleteNovedad,
@@ -154,7 +158,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
 
   const effectiveJefeId = isChiefRole ? myChiefRecord.id : (selectedJefeId || myChiefRecord.id);
 
-  const [selectedWeek, setSelectedWeek] = useState<string>('2026-08-03');
+  const [selectedWeek, setSelectedWeek] = useState<string>(() => getMondayOfDate(new Date()));
   const [filterClient, setFilterClient] = useState<string>('TODOS');
 
   const [scheduleSuccessMsg, setScheduleSuccessMsg] = useState<string>('');
@@ -164,7 +168,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
     if (e.rol !== 'Repartidor') return false;
     const isAssigned = !e.jefeZonaId || e.jefeZonaId === effectiveJefeId;
     const hasScheduleInWeek = schedules.some(
-      (s) => s.repartidorId === e.id && s.semanaInicio === selectedWeek
+      (s) => (s.repartidorId === e.id || s.repartidorId === e.cedula) && normalizeExcelWeekDate(s.semanaInicio) === selectedWeek
     );
     return isAssigned || hasScheduleInWeek;
   });
@@ -178,7 +182,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
 
   // Form State for Novedades con Horas
   const [novRepartidorId, setNovRepartidorId] = useState<string>('');
-  const [novFecha, setNovFecha] = useState<string>('2026-08-04');
+  const [novFecha, setNovFecha] = useState<string>(() => getCurrentDateTimeInfo().fecha);
   const [novTipo, setNovTipo] = useState<'Permiso Remunerado' | 'Permiso No Remunerado' | 'Incapacidad'>('Permiso Remunerado');
   const [novHoraInicio, setNovHoraInicio] = useState<string>('09:00');
   const [novHoraFin, setNovHoraFin] = useState<string>('10:00');
@@ -362,16 +366,23 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
         return;
       }
 
-      // 1. Si se detectaron repartidores nuevos en el archivo, registrarlos en el sistema
-      if (result.newEmployeesToCreate.length > 0 && onAddEmployee) {
-        for (const newEmp of result.newEmployeesToCreate) {
-          onAddEmployee(newEmp);
+      // 1. Guardar programaciones y nuevos repartidores (usando batch atómico si está disponible)
+      if (onSaveBatchSchedules) {
+        await onSaveBatchSchedules(result.schedules, result.newEmployeesToCreate);
+      } else {
+        if (result.newEmployeesToCreate.length > 0 && onAddEmployee) {
+          for (const newEmp of result.newEmployeesToCreate) {
+            onAddEmployee(newEmp);
+          }
+        }
+        for (const sched of result.schedules) {
+          onSaveSchedule(sched);
         }
       }
 
-      // 2. Guardar cada programación semanal en Firestore y estado
-      for (const sched of result.schedules) {
-        onSaveSchedule(sched);
+      // 2. Actualizar automáticamente la semana visualizada en el portal del jefe a la semana cargada
+      if (result.summary.weekStart && result.summary.weekStart !== selectedWeek) {
+        setSelectedWeek(result.summary.weekStart);
       }
 
       setBulkWarnings(result.warnings);
@@ -603,7 +614,7 @@ export const ZoneChiefPortalView: React.FC<ZoneChiefPortalViewProps> = ({
 
             {repartidoresAsignados.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-xs">
-                No hay repartidores asignados a este Jefe de Zona actualmente. Puedes asignar repartidores en el Portal de Administración.
+                No hay repartidores asignados a este Jefe de Zona actualmente. Puedes solicitar la asignación a la Administración de SERGEM.
               </div>
             ) : (
               <div className="divide-y divide-slate-200">

@@ -43,6 +43,7 @@ import {
   Compass,
   BarChart2,
   UserCog,
+  Settings,
 } from 'lucide-react';
 
 interface AdminPortalViewProps {
@@ -52,6 +53,7 @@ interface AdminPortalViewProps {
   clientReports?: ClientOrderReport[];
   onAddEmployee: (employee: Employee) => void;
   onUpdateEmployee: (employee: Employee) => void;
+  onOpenSettings?: () => void;
 }
 
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
@@ -61,6 +63,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   clientReports = [],
   onAddEmployee,
   onUpdateEmployee,
+  onOpenSettings,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('TODOS');
@@ -426,6 +429,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 shrink-0 pt-2 lg:pt-0">
+          {onOpenSettings && (
+            <button
+              id="btn-admin-settings"
+              onClick={onOpenSettings}
+              className="bg-white hover:bg-slate-50 text-slate-700 font-bold px-4 py-3.5 rounded-xl shadow-xs border border-slate-300 flex items-center justify-center space-x-2 transition-all cursor-pointer text-xs md:text-sm active:scale-95"
+              title="Parámetros de Nómina y Empresa"
+            >
+              <Settings className="w-4 h-4 text-slate-500" />
+              <span>Configuración</span>
+            </button>
+          )}
+
           {/* Invite Collaborator Button (Unified with Manual Form, Bulk Upload & Template Download) */}
           <button
             id="btn-invite-employee"

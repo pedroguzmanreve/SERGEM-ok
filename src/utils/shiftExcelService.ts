@@ -6,6 +6,7 @@ import {
   Employee,
   CompanyClient
 } from '../types/payroll';
+import { getMondayOfDate, normalizeExcelWeekDate } from './attendanceService';
 
 export interface ParsedScheduleResult {
   schedules: WeeklySchedule[];
@@ -80,8 +81,9 @@ export function normalizeShiftType(raw: string): ShiftType {
 export function generateShiftScheduleExcel(
   employees: Employee[] = [],
   clients: CompanyClient[] = [],
-  targetWeek: string = '2026-08-03'
+  targetWeek?: string
 ): void {
+  const actualTargetWeek = targetWeek || getMondayOfDate();
   const wb = XLSX.utils.book_new();
 
   // 1. Hoja Principal: Matriz de Turnos Semanales
@@ -326,13 +328,47 @@ export async function parseShiftScheduleExcel(
   const newEmployeesToCreate: Employee[] = [];
   const warnings: string[] = [];
   const errors: string[] = [];
+  const cleanDigits = (val: any) => String(val || '').replace(/\D/g, '');
+  const normalizeName = (val: any) =>
+    String(val || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
 
-  // Mapa de empleados por cédula e ID para búsqueda rápida
+  // Helper to extract value from row trying multiple column name variants
+  const getRowVal = (row: Record<string, any>, candidateKeys: string[]): string => {
+    for (const cand of candidateKeys) {
+      const cleanCand = cand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (const [k, v] of Object.entries(row)) {
+        const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (cleanK === cleanCand || cleanK.includes(cleanCand)) {
+          if (v !== undefined && v !== null && String(v).trim() !== '') {
+            return String(v).trim();
+          }
+        }
+      }
+    }
+    return '';
+  };
+
+  // Mapa de empleados por cédula limpia, ID, email y nombre para búsqueda rápida
   const employeeMap = new Map<string, Employee>();
   existingEmployees.forEach((emp) => {
-    if (emp.cedula) employeeMap.set(emp.cedula.trim(), emp);
+    if (emp.cedula) {
+      employeeMap.set(emp.cedula.trim(), emp);
+      const cd = cleanDigits(emp.cedula);
+      if (cd) employeeMap.set(cd, emp);
+    }
     employeeMap.set(emp.id.trim(), emp);
-    employeeMap.set(`${emp.nombre.trim().toLowerCase()} ${emp.apellido.trim().toLowerCase()}`, emp);
+    const idDigits = cleanDigits(emp.id);
+    if (idDigits) employeeMap.set(idDigits, emp);
+
+    if (emp.email) employeeMap.set(emp.email.trim().toLowerCase(), emp);
+    const fullNameNorm = normalizeName(`${emp.nombre} ${emp.apellido}`);
+    if (fullNameNorm) employeeMap.set(fullNameNorm, emp);
+    const firstNameNorm = normalizeName(emp.nombre);
+    if (firstNameNorm) employeeMap.set(firstNameNorm, emp);
   });
 
   // Determinar si es formato matriz semanal o formato fila por turno
@@ -345,42 +381,39 @@ export async function parseShiftScheduleExcel(
     rawRows.forEach((row, index) => {
       const rowNum = index + 2; // Línea 1 es encabezado
 
-      // Obtener cédula y nombre buscando variantes de nombres de columnas
-      const cedulaRaw = String(
-        row['Cedula'] || row['Cédula'] || row['CEDULA'] || row['Documento'] || row['Identificacion'] || ''
-      ).trim();
+      // Obtener cédula buscando variantes de nombres de columnas
+      const cedulaRaw = getRowVal(row, ['cedula', 'documento', 'identificacion', 'cc', 'doc', 'cédula']);
+      const nombreRaw = getRowVal(row, ['nombre_repartidor', 'nombrerepartidor', 'nombre', 'repartidor', 'colaborador', 'empleado']);
+      const emailRaw = getRowVal(row, ['correo', 'email', 'correo_electronico', 'correoelectronico', 'mail']).toLowerCase();
 
-      const nombreRaw = String(
-        row['Nombre_Repartidor'] || row['Nombre'] || row['Repartidor'] || row['NOMBRE'] || ''
-      ).trim();
-
-      if (!cedulaRaw && !nombreRaw) {
+      if (!cedulaRaw && !nombreRaw && !emailRaw) {
         // Fila vacía al final, ignorar
         return;
       }
 
-      const semanaInicio = String(
-        row['Semana_Inicio'] || row['Semana'] || row['Fecha_Inicio'] || fallbackWeek
-      ).trim() || fallbackWeek;
+      const rawSemana = getRowVal(row, ['semana_inicio', 'semanainicio', 'semana', 'fecha_inicio', 'fechainicio', 'fecha']) || fallbackWeek;
+      const semanaInicio = normalizeExcelWeekDate(rawSemana, fallbackWeek);
 
-      // Buscar si el empleado ya existe
-      let targetEmployee = employeeMap.get(cedulaRaw);
-      if (!targetEmployee && nombreRaw) {
-        targetEmployee = employeeMap.get(nombreRaw.toLowerCase());
-      }
+      // Buscar si el empleado ya existe (por cédula limpia, cédula cruda, email, o nombre normalizado)
+      const cleanCed = cleanDigits(cedulaRaw);
+      let targetEmployee = cleanCed ? employeeMap.get(cleanCed) : undefined;
+      if (!targetEmployee && cedulaRaw) targetEmployee = employeeMap.get(cedulaRaw);
+      if (!targetEmployee && emailRaw) targetEmployee = employeeMap.get(emailRaw);
+      if (!targetEmployee && nombreRaw) targetEmployee = employeeMap.get(normalizeName(nombreRaw));
 
       // Si no existe, crear registro de repartidor
       if (!targetEmployee) {
-        const nameParts = nombreRaw.split(' ');
+        const nameParts = (nombreRaw || 'Repartidor').split(' ');
         const firstName = nameParts[0] || 'Repartidor';
-        const lastName = nameParts.slice(1).join(' ') || (cedulaRaw ? `C.C. ${cedulaRaw}` : '');
+        const lastName = nameParts.slice(1).join(' ') || (cleanCed ? `C.C. ${cleanCed}` : '');
 
-        const newEmpId = `EMP-${cedulaRaw ? cedulaRaw.slice(-6) : Date.now().toString().slice(-4)}`;
+        const newEmpId = `EMP-${cleanCed ? cleanCed.slice(-6) : Date.now().toString().slice(-4)}`;
         targetEmployee = {
           id: newEmpId,
-          cedula: cedulaRaw || `TEMP-${Date.now().toString().slice(-4)}`,
+          cedula: cleanCed || cedulaRaw || `TEMP-${Date.now().toString().slice(-4)}`,
           nombre: firstName,
           apellido: lastName,
+          email: emailRaw || undefined,
           cargo: 'Repartidor Motorizado',
           departamento: 'Operaciones y Mensajería',
           salarioBase: 1423500,
@@ -400,9 +433,16 @@ export async function parseShiftScheduleExcel(
         };
 
         newEmployeesToCreate.push(targetEmployee);
+        if (cleanCed) employeeMap.set(cleanCed, targetEmployee);
         employeeMap.set(targetEmployee.cedula, targetEmployee);
         employeeMap.set(targetEmployee.id, targetEmployee);
+        if (targetEmployee.email) employeeMap.set(targetEmployee.email, targetEmployee);
         warnings.push(`Fila ${rowNum}: El repartidor "${nombreRaw || cedulaRaw}" no existía en el sistema; fue creado automáticamente.`);
+      } else {
+        // Si el empleado existía pero no tenía email en el sistema y viene en el Excel, adjuntarlo
+        if (emailRaw && !targetEmployee.email) {
+          targetEmployee.email = emailRaw;
+        }
       }
 
       // Compilar turnos de los 7 días
@@ -454,6 +494,9 @@ export async function parseShiftScheduleExcel(
         }
 
         const cliente = String(getVal(`${prefix}cliente`)).trim() || 'Almacenes Éxito S.A.';
+        const puntoVenta = String(getVal(`${prefix}puntoventa`) || getVal(`${prefix}punto`) || getVal(`${prefix}sede`)).trim() || undefined;
+        const ciudad = String(getVal(`${prefix}ciudad`) || getVal(`${prefix}municipio`)).trim() || undefined;
+
         const hIni1 = formatExcelTime(getVal(`${prefix}inicio1`), '07:00');
         const hFin1 = formatExcelTime(getVal(`${prefix}fin1`), tipo === 'Partido' ? '11:00' : '15:00');
         const hIni2 = tipo === 'Partido' ? formatExcelTime(getVal(`${prefix}inicio2`), '14:00') : undefined;
@@ -472,6 +515,8 @@ export async function parseShiftScheduleExcel(
         const shift: ShiftDetails = {
           tipo,
           clienteNombre: cliente,
+          puntoVentaNombre: puntoVenta || cliente,
+          ciudad: ciudad,
           horaInicio1: hIni1,
           horaFin1: hFin1,
           horaInicio2: hIni2,
@@ -497,24 +542,27 @@ export async function parseShiftScheduleExcel(
 
     rawRows.forEach((row, index) => {
       const rowNum = index + 2;
-      const cedulaRaw = String(row['Cedula'] || row['Cédula'] || row['Documento'] || '').trim();
-      const nombreRaw = String(row['Nombre'] || row['Repartidor'] || '').trim();
+      const cedulaRaw = getRowVal(row, ['cedula', 'documento', 'identificacion', 'cc', 'doc', 'cédula']);
+      const nombreRaw = getRowVal(row, ['nombre_repartidor', 'nombrerepartidor', 'nombre', 'repartidor', 'colaborador', 'empleado']);
+      const emailRaw = getRowVal(row, ['correo', 'email', 'correo_electronico', 'correoelectronico', 'mail']).toLowerCase();
 
-      if (!cedulaRaw && !nombreRaw) return;
+      if (!cedulaRaw && !nombreRaw && !emailRaw) return;
 
-      let targetEmployee = employeeMap.get(cedulaRaw);
-      if (!targetEmployee && nombreRaw) {
-        targetEmployee = employeeMap.get(nombreRaw.toLowerCase());
-      }
+      const cleanCed = cleanDigits(cedulaRaw);
+      let targetEmployee = cleanCed ? employeeMap.get(cleanCed) : undefined;
+      if (!targetEmployee && cedulaRaw) targetEmployee = employeeMap.get(cedulaRaw);
+      if (!targetEmployee && emailRaw) targetEmployee = employeeMap.get(emailRaw);
+      if (!targetEmployee && nombreRaw) targetEmployee = employeeMap.get(normalizeName(nombreRaw));
 
       if (!targetEmployee) {
-        const nameParts = nombreRaw.split(' ');
-        const newEmpId = `EMP-${cedulaRaw ? cedulaRaw.slice(-6) : Date.now().toString().slice(-4)}`;
+        const nameParts = (nombreRaw || 'Repartidor').split(' ');
+        const newEmpId = `EMP-${cleanCed ? cleanCed.slice(-6) : Date.now().toString().slice(-4)}`;
         targetEmployee = {
           id: newEmpId,
-          cedula: cedulaRaw || `TEMP-${Date.now().toString().slice(-4)}`,
+          cedula: cleanCed || cedulaRaw || `TEMP-${Date.now().toString().slice(-4)}`,
           nombre: nameParts[0] || 'Repartidor',
-          apellido: nameParts.slice(1).join(' ') || '',
+          apellido: nameParts.slice(1).join(' ') || (cleanCed ? `C.C. ${cleanCed}` : ''),
+          email: emailRaw || undefined,
           cargo: 'Repartidor Motorizado',
           departamento: 'Operaciones y Mensajería',
           salarioBase: 1423500,
@@ -533,11 +581,18 @@ export async function parseShiftScheduleExcel(
           estadoInvitacion: 'Activo',
         };
         newEmployeesToCreate.push(targetEmployee);
+        if (cleanCed) employeeMap.set(cleanCed, targetEmployee);
         employeeMap.set(targetEmployee.cedula, targetEmployee);
         employeeMap.set(targetEmployee.id, targetEmployee);
+        if (targetEmployee.email) employeeMap.set(targetEmployee.email, targetEmployee);
+      } else {
+        if (emailRaw && !targetEmployee.email) {
+          targetEmployee.email = emailRaw;
+        }
       }
 
-      const semanaInicio = String(row['Semana'] || fallbackWeek).trim() || fallbackWeek;
+      const rawSemana = getRowVal(row, ['semana_inicio', 'semanainicio', 'semana', 'fecha_inicio', 'fechainicio', 'fecha']) || fallbackWeek;
+      const semanaInicio = normalizeExcelWeekDate(rawSemana, fallbackWeek);
       const key = `${targetEmployee.id}___${semanaInicio}`;
 
       if (!schedulesByDriverAndWeek.has(key)) {

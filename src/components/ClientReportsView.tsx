@@ -2069,7 +2069,7 @@ export const ClientReportsView: React.FC<ClientReportsViewProps> = ({
                   downloadClientExcelTemplate();
                 }}
                 className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center space-x-1.5 border border-slate-300 cursor-pointer transition-all"
-                title="Descargar plantilla Excel oficial de 3 niveles"
+                title="Descargar plantilla Excel oficial con las 4 columnas (EMPRESA, CENTRO_C, PUNTO_VENTA, CIUDAD)"
               >
                 <Download className="w-4 h-4 text-emerald-600" />
                 <span>Plantilla (.xlsx)</span>

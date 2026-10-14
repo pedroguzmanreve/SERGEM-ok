@@ -1,17 +1,25 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Employee,
   WeeklySchedule,
   ClientOrderReport,
   DriverAttendanceRecord,
   AppRole,
-  AppUserProfile
+  AppUserProfile,
+  PuntoVenta,
+  CompanyClient,
+  Empresa
 } from '../types/payroll';
 import {
   getCurrentDateTimeInfo,
   buildCallLink,
   buildDriverShiftWhatsAppLink,
-  buildDriverToZoneChiefWhatsAppLink
+  buildDriverToZoneChiefWhatsAppLink,
+  getMondayOfDate,
+  formatWeekRangeSpanish,
+  getAvailableScheduleWeeks,
+  MONTHS_SPANISH,
+  normalizeExcelWeekDate
 } from '../utils/attendanceService';
 import {
   Truck,
@@ -36,7 +44,12 @@ import {
   Compass,
   MapPin,
   Phone,
-  MessageCircle
+  MessageCircle,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  ChevronDown,
+  X
 } from 'lucide-react';
 
 interface DriverPortalViewProps {
@@ -44,6 +57,9 @@ interface DriverPortalViewProps {
   schedules: WeeklySchedule[];
   clientReports: ClientOrderReport[];
   attendanceRecords?: DriverAttendanceRecord[];
+  pointsOfSale?: PuntoVenta[];
+  clients?: CompanyClient[];
+  companies?: Empresa[];
   onAddClientReport?: (report: ClientOrderReport) => void;
   onRecordAttendance?: (record: DriverAttendanceRecord) => void;
   defaultDriverId?: string;
@@ -56,6 +72,9 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   schedules,
   clientReports,
   attendanceRecords = [],
+  pointsOfSale = [],
+  clients = [],
+  companies = [],
   onAddClientReport,
   onRecordAttendance,
   defaultDriverId,
@@ -63,6 +82,29 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   userProfile,
 }) => {
   const isRepartidorRole = currentRole === 'Repartidor';
+
+  // Extract invite query parameters for direct link authentication
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const inviteEmail = urlParams?.get('invite_email') || null;
+  const inviteEmpId = urlParams?.get('emp_id') || null;
+  const inviteCedula = urlParams?.get('cedula') || null;
+  const inviteEmpName = urlParams?.get('emp_name') || null;
+  const inviteToken = urlParams?.get('token') || null;
+
+  // Local override state when driver enters their cédula/email directly to validate access
+  const [driverValidationOverride, setDriverValidationOverride] = useState<Employee | null>(null);
+
+  const cleanDigits = (v: any) => String(v || '').replace(/\D/g, '');
+  const normalizeText = (v: any) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+  const targetEmail = (userProfile?.email || inviteEmail || '').trim().toLowerCase();
+  const targetEmpId = (userProfile?.employeeId || defaultDriverId || inviteEmpId || '').trim();
+  const targetCedula = (userProfile?.cedula || inviteCedula || '').trim();
 
   // Filter employees with Repartidor or Conductor role
   const drivers = useMemo(() => {
@@ -75,20 +117,70 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
     );
   }, [employees]);
 
-  // If user is Repartidor, resolve their specific employee record or synthesized profile
+  // STRICT AUTHENTICATION: Match logged-in user or link to their specific employee record
+  const matchedDriver = useMemo<Employee | null>(() => {
+    if (driverValidationOverride) return driverValidationOverride;
+
+    // 1. Match by employee ID or clean digits of ID
+    if (targetEmpId) {
+      const targetEmpDigits = cleanDigits(targetEmpId);
+      const byId = employees.find(
+        (emp) =>
+          emp.id.trim() === targetEmpId ||
+          (emp.cedula && emp.cedula.trim() === targetEmpId) ||
+          (targetEmpDigits && cleanDigits(emp.id) === targetEmpDigits) ||
+          (targetEmpDigits && emp.cedula && cleanDigits(emp.cedula) === targetEmpDigits) ||
+          (targetEmpId.startsWith('EMP-') && emp.id.trim() === targetEmpId)
+      );
+      if (byId) return byId;
+    }
+
+    // 2. Match by cédula (clean numeric digits)
+    if (targetCedula) {
+      const targetCedDigits = cleanDigits(targetCedula);
+      if (targetCedDigits) {
+        const byCedula = employees.find(
+          (emp) =>
+            (emp.cedula && cleanDigits(emp.cedula) === targetCedDigits) ||
+            cleanDigits(emp.id) === targetCedDigits
+        );
+        if (byCedula) return byCedula;
+      }
+    }
+
+    // 3. Match by email
+    if (targetEmail) {
+      const byEmail = employees.find(
+        (emp) => emp.email && emp.email.trim().toLowerCase() === targetEmail
+      );
+      if (byEmail) return byEmail;
+    }
+
+    // 4. Match by displayName or inviteEmpName
+    const searchName = normalizeText(userProfile?.displayName || inviteEmpName || '');
+    if (searchName && searchName.length >= 3) {
+      const byName = employees.find((emp) => {
+        const full = normalizeText(`${emp.nombre} ${emp.apellido}`);
+        return (
+          full === searchName ||
+          (searchName.length >= 6 && (full.includes(searchName) || searchName.includes(full)))
+        );
+      });
+      if (byName) return byName;
+    }
+
+    return null;
+  }, [employees, targetEmpId, targetEmail, targetCedula, userProfile?.displayName, inviteEmpName, driverValidationOverride]);
+
+  // Resolved driver record for this session
   const myRepartidorRecord = useMemo<Employee>(() => {
-    const found = employees.find(
-      (emp) =>
-        (userProfile?.employeeId && emp.id === userProfile.employeeId) ||
-        (userProfile?.email && emp.email?.toLowerCase() === userProfile.email.toLowerCase())
-    );
-    if (found) return found;
+    if (matchedDriver) return matchedDriver;
 
     return {
-      id: userProfile?.employeeId || defaultDriverId || 'EMP-REP-01',
-      cedula: userProfile?.cedula || '1017123456',
-      nombre: userProfile?.displayName?.split(' ')[0] || 'Pepito',
-      apellido: userProfile?.displayName?.split(' ').slice(1).join(' ') || 'Pérez',
+      id: targetEmpId || defaultDriverId || 'EMP-REP-01',
+      cedula: targetCedula || 'Sin Cédula Registrada',
+      nombre: userProfile?.displayName?.split(' ')[0] || inviteEmpName?.split(' ')[0] || 'Repartidor',
+      apellido: userProfile?.displayName?.split(' ').slice(1).join(' ') || inviteEmpName?.split(' ').slice(1).join(' ') || 'SERGEM',
       cargo: 'Repartidor Motorizado',
       departamento: 'Operaciones y Mensajería',
       salarioBase: 1750000,
@@ -104,45 +196,177 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       activo: true,
       rol: 'Repartidor',
       placaVehiculo: 'VTX-89D',
-      email: userProfile?.email || 'pepito@sergem.com.co',
+      email: targetEmail || 'repartidor@sergem.com.co',
     };
-  }, [employees, userProfile, defaultDriverId]);
+  }, [matchedDriver, targetEmpId, targetCedula, targetEmail, defaultDriverId, userProfile?.displayName, inviteEmpName]);
 
-  // Active Driver state: If Repartidor, locked to myRepartidorRecord.id. If Admin, can switch.
-  const [selectedDriverId, setSelectedDriverId] = useState<string>(() => {
-    if (isRepartidorRole) return myRepartidorRecord.id;
-    return defaultDriverId || drivers[0]?.id || myRepartidorRecord.id;
-  });
+  // STRICT ACCESS ISOLATION: A driver can ONLY and EXCLUSIVELY see their own profile, schedule, and reports.
+  const isStrictRepartidor = isRepartidorRole || !!inviteEmail || !!inviteEmpId || userProfile?.role === 'Repartidor';
 
-  // Keep selectedDriverId locked to the authenticated user's ID if currentRole is Repartidor
-  const effectiveDriverId = isRepartidorRole ? myRepartidorRecord.id : selectedDriverId;
+  // The active driver profile is ALWAYS locked to the authenticated user in driver mode
+  const selectedDriver = myRepartidorRecord;
 
-  // Synchronize driver selection if defaultDriverId is specified (e.g. from invitation link)
-  useEffect(() => {
-    if (defaultDriverId) {
-      setSelectedDriverId(defaultDriverId);
+  // Derived / Effective Points of Sale list (from pointsOfSale or clients)
+  const effectivePointsOfSale = useMemo<PuntoVenta[]>(() => {
+    if (pointsOfSale && pointsOfSale.length > 0) return pointsOfSale;
+    if (clients && clients.length > 0) {
+      return clients.map((cli) => ({
+        id: cli.id,
+        centroCostoId: cli.centroCostoId || 'CC-01',
+        centroCostoNombre: cli.centroCostoNombre || 'Operación General y Despacho',
+        empresaId: cli.empresaId || 'EMP-01',
+        empresaNombre: cli.empresaNombre || cli.nombre.split(' - ')[0] || cli.nombre,
+        codigo: cli.codigoPunto || `PV-${cli.id.slice(-3)}`,
+        nombre: cli.nombre,
+        ciudad: cli.ciudad || 'Cali',
+        direccion: cli.direccion || 'Sede Principal',
+        supervisorContacto: cli.contactoNombre,
+        telefonoContacto: cli.contactoTelefono,
+        emailContacto: cli.contactoEmail,
+        tarifaHoraBase: cli.tarifaHoraBase,
+        observaciones: cli.observaciones,
+        activo: cli.activo,
+        fechaCreacion: cli.fechaCreacion || new Date().toISOString().split('T')[0],
+      }));
     }
-  }, [defaultDriverId]);
+    return [];
+  }, [pointsOfSale, clients]);
 
-  const selectedDriver = useMemo(() => {
-    if (isRepartidorRole) return myRepartidorRecord;
-    return (
-      employees.find((emp) => emp.id === effectiveDriverId) ||
-      drivers[0] ||
-      myRepartidorRecord
-    );
-  }, [isRepartidorRole, myRepartidorRecord, employees, effectiveDriverId, drivers]);
+  // Current Monday of reference date (mes en curso)
+  const currentMonday = useMemo(() => getMondayOfDate(new Date()), []);
 
-  // Selected week for schedule view
-  const [selectedWeek, setSelectedWeek] = useState<string>('2026-08-03');
+  // Compute available weeks dynamically: includes current month, adjacent months and existing schedules
+  const availableWeeks = useMemo(() => {
+    return getAvailableScheduleWeeks(schedules, selectedDriver?.id, new Date(), selectedDriver);
+  }, [schedules, selectedDriver]);
 
-  // Driver's schedule for selected week
+  // Selected week for schedule view: defaults dynamically to current Monday of the active month
+  const [selectedWeek, setSelectedWeek] = useState<string>(() => currentMonday);
+
+  // If selectedWeek is not in availableWeeks and availableWeeks is loaded, fallback to currentMonday
+  useEffect(() => {
+    if (availableWeeks.length > 0 && !availableWeeks.some((w) => w.value === selectedWeek)) {
+      setSelectedWeek(currentMonday);
+    }
+  }, [availableWeeks, currentMonday, selectedWeek]);
+
+  // Helper to match schedule to driver (by ID, clean numeric cédula, substring, or employee registry)
+  const isScheduleForDriver = (s: WeeklySchedule, driver: Employee) => {
+    if (!s || !driver) return false;
+    const sRepId = (s.repartidorId || '').trim();
+    if (!sRepId) return false;
+
+    // 1. Direct ID match
+    if (sRepId === driver.id.trim()) return true;
+
+    // 2. ID without EMP- prefix
+    if (driver.id.replace(/^EMP-?/i, '').trim() === sRepId.replace(/^EMP-?/i, '').trim()) return true;
+
+    // 3. Clean numeric digits comparison (cédula or numeric ID, e.g. 1020456789 vs 1.020.456.789 vs EMP-1020456789)
+    const cleanDriverCedula = cleanDigits(driver.cedula);
+    const cleanSchedId = cleanDigits(sRepId);
+    if (cleanDriverCedula && cleanSchedId && cleanDriverCedula === cleanSchedId) return true;
+
+    // 4. Substring cédula match
+    if (cleanDriverCedula && sRepId.includes(cleanDriverCedula)) return true;
+    if (cleanSchedId && driver.cedula && driver.cedula.includes(cleanSchedId)) return true;
+
+    // 5. Look up via employees map
+    const schedEmp = employees.find((e) => e.id === sRepId || e.cedula === sRepId);
+    if (schedEmp) {
+      if (schedEmp.id === driver.id) return true;
+      const cleanSchedEmpCedula = cleanDigits(schedEmp.cedula);
+      if (cleanDriverCedula && cleanSchedEmpCedula && cleanDriverCedula === cleanSchedEmpCedula) return true;
+      if (driver.email && schedEmp.email && driver.email.toLowerCase() === schedEmp.email.toLowerCase()) return true;
+      const norm1 = normalizeText(`${schedEmp.nombre} ${schedEmp.apellido}`);
+      const norm2 = normalizeText(`${driver.nombre} ${driver.apellido}`);
+      if (norm1 && norm2 && (norm1 === norm2 || norm1.includes(norm2) || norm2.includes(norm1))) return true;
+    }
+
+    return false;
+  };
+
+  // Helper to match schedule to week (normalizing any ISO, Excel integer, or date format)
+  const isScheduleForWeek = (s: WeeklySchedule, targetWeek: string) => {
+    const sWeek = normalizeExcelWeekDate(s.semanaInicio, targetWeek);
+    return sWeek === targetWeek;
+  };
+
+  // Driver's schedule for selected week (STRICTLY ISOLATED TO THIS DRIVER)
   const driverSchedule = useMemo(() => {
+    if (!selectedDriver) return undefined;
     return schedules.find(
       (s) =>
-        s.repartidorId === selectedDriver.id && s.semanaInicio === selectedWeek
+        isScheduleForDriver(s, selectedDriver) &&
+        isScheduleForWeek(s, selectedWeek)
     );
-  }, [schedules, selectedDriver.id, selectedWeek]);
+  }, [schedules, selectedDriver, selectedWeek, employees]);
+
+  // Current week schedule (specifically for today's live shift check-in)
+  const currentWeekSchedule = useMemo(() => {
+    if (!selectedDriver) return undefined;
+    return schedules.find(
+      (s) =>
+        isScheduleForDriver(s, selectedDriver) &&
+        isScheduleForWeek(s, currentMonday)
+    );
+  }, [schedules, selectedDriver, currentMonday, employees]);
+
+  // AUTO-SELECT WEEK: If currently selected week has no shifts, but there is an active week with shifts for this driver, select it!
+  useEffect(() => {
+    if (!selectedDriver) return;
+    const hasCurrent = schedules.some(
+      (s) => isScheduleForDriver(s, selectedDriver) && isScheduleForWeek(s, selectedWeek)
+    );
+    if (!hasCurrent) {
+      const driverSchedules = schedules.filter((s) => isScheduleForDriver(s, selectedDriver));
+      if (driverSchedules.length > 0) {
+        const normWeeks = driverSchedules
+          .map((s) => normalizeExcelWeekDate(s.semanaInicio))
+          .filter(Boolean)
+          .sort();
+        if (normWeeks.includes(currentMonday)) {
+          setSelectedWeek(currentMonday);
+        } else if (normWeeks.length > 0) {
+          setSelectedWeek(normWeeks[normWeeks.length - 1]);
+        }
+      }
+    }
+  }, [schedules, selectedDriver, currentMonday]);
+
+  // Label for current month in course
+  const currentMonthLabel = useMemo(() => {
+    const now = new Date();
+    return `${MONTHS_SPANISH[now.getMonth()]} ${now.getFullYear()}`;
+  }, []);
+
+  const currentMonthWeeks = useMemo(() => {
+    return availableWeeks.filter((w) => w.isCurrentMonth);
+  }, [availableWeeks]);
+
+  const otherScheduledWeeks = useMemo(() => {
+    return availableWeeks.filter((w) => !w.isCurrentMonth && w.hasSchedule);
+  }, [availableWeeks]);
+
+  const otherWeeks = useMemo(() => {
+    return availableWeeks.filter((w) => !w.isCurrentMonth && !w.hasSchedule);
+  }, [availableWeeks]);
+
+  const currentWeekIndex = availableWeeks.findIndex((w) => w.value === selectedWeek);
+  const canGoPrev = currentWeekIndex > 0;
+  const canGoNext = currentWeekIndex >= 0 && currentWeekIndex < availableWeeks.length - 1;
+
+  const handlePrevWeek = () => {
+    if (canGoPrev) {
+      setSelectedWeek(availableWeeks[currentWeekIndex - 1].value);
+    }
+  };
+
+  const handleNextWeek = () => {
+    if (canGoNext) {
+      setSelectedWeek(availableWeeks[currentWeekIndex + 1].value);
+    }
+  };
 
   // Zone Chiefs list and assigned supervisor for direct communication
   const zoneChiefs = useMemo(() => {
@@ -201,7 +425,11 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   // Default client & shift type for today (Dynamically resolves day of week)
   const currentInfo = getCurrentDateTimeInfo();
   const todayDayName = currentInfo.diaSemana;
-  const todayShift = driverSchedule?.dias[todayDayName] || driverSchedule?.dias['Lunes'] || null;
+  const todayShift =
+    (selectedWeek === currentMonday ? driverSchedule?.dias[todayDayName] : currentWeekSchedule?.dias[todayDayName]) ||
+    currentWeekSchedule?.dias[todayDayName] ||
+    driverSchedule?.dias[todayDayName] ||
+    null;
 
   const isTurnoPartido = todayShift?.tipo === 'Partido';
   const clienteHoy = todayShift?.clienteNombre || 'Sin cliente asignado';
@@ -211,7 +439,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
   useEffect(() => {
     const todayInfo = getCurrentDateTimeInfo();
     const existing = attendanceRecords.find(
-      (a) => a.repartidorId === selectedDriverId && a.fecha === todayInfo.fecha
+      (a) => a.repartidorId === myRepartidorRecord.id && a.fecha === todayInfo.fecha
     );
     if (existing) {
       if (existing.fotoAuditoria && !auditPhoto) {
@@ -227,7 +455,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
         );
       }
     }
-  }, [selectedDriverId, attendanceRecords, isTurnoPartido, auditPhoto, horaInicio]);
+  }, [myRepartidorRecord.id, attendanceRecords, isTurnoPartido, auditPhoto, horaInicio]);
 
   // Handle Photo Capture Simulation / Upload
   const handleCapturePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -244,15 +472,6 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const handleSimulatePhoto = () => {
-    if (auditPhotoLocked) return;
-    // Default audit photo placeholder (delivery driver badge/vehicle inspection)
-    const samplePhoto =
-      'https://images.unsplash.com/photo-1580674684081-7617fbf3d745?auto=format&fit=crop&q=80&w=600';
-    setAuditPhoto(samplePhoto);
-    setAuditPhotoLocked(true); // Lock photo permanently as requested
   };
 
   // Current time formatted
@@ -318,13 +537,112 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
     setShiftStatus('JORNADA_COMPLETADA');
   };
 
-  // Driver reports filter
+  // Driver reports filter (strictly isolated to the current driver)
   const driverReports = useMemo(() => {
-    return clientReports.filter((rep) => rep.repartidorId === selectedDriverId);
-  }, [clientReports, selectedDriverId]);
+    if (!selectedDriver) return [];
+    const cleanCed = cleanDigits(selectedDriver.cedula);
+    return clientReports.filter(
+      (rep) =>
+        rep.repartidorId === selectedDriver.id ||
+        (cleanCed && cleanDigits(rep.repartidorId) === cleanCed) ||
+        (selectedDriver.cedula && rep.repartidorId === selectedDriver.cedula)
+    );
+  }, [clientReports, selectedDriver]);
 
-  // Selected client for report
+  // Selected client for report with searchable picker
   const [selectedClientForReport, setSelectedClientForReport] = useState<string>('');
+  const [clientSearchTerm, setClientSearchTerm] = useState<string>('');
+  const [isClientSearchOpen, setIsClientSearchOpen] = useState<boolean>(false);
+  const clientPickerRef = useRef<HTMLDivElement>(null);
+
+  // Close client search dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (clientPickerRef.current && !clientPickerRef.current.contains(event.target as Node)) {
+        setIsClientSearchOpen(false);
+      }
+    };
+    if (isClientSearchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isClientSearchOpen]);
+
+  // Unified available clients for searchable delivery client picker
+  const availableClientOptions = useMemo(() => {
+    const list: Array<{ id: string; nombre: string; ciudad?: string; empresaNombre?: string }> = [];
+    const seenNames = new Set<string>();
+
+    if (clients && clients.length > 0) {
+      clients.forEach((c) => {
+        if (c.nombre && !seenNames.has(c.nombre.toLowerCase().trim())) {
+          seenNames.add(c.nombre.toLowerCase().trim());
+          list.push({
+            id: c.id,
+            nombre: c.nombre,
+            ciudad: c.ciudad,
+            empresaNombre: c.empresaNombre,
+          });
+        }
+      });
+    }
+
+    // Default fallback clients if none registered
+    if (list.length === 0) {
+      const defaults = [
+        { id: 'CLI-001', nombre: 'Almacenes Éxito S.A.', ciudad: 'Bogotá', empresaNombre: 'Grupo Éxito' },
+        { id: 'CLI-002', nombre: 'Homecenter Colombia', ciudad: 'Cali', empresaNombre: 'Sodimac Corona' },
+        { id: 'CLI-003', nombre: 'Decathlon Colombia', ciudad: 'Medellín', empresaNombre: 'Decathlon' },
+        { id: 'CLI-004', nombre: 'Mercado Libre S.A.S.', ciudad: 'Bogotá', empresaNombre: 'Mercado Libre' },
+        { id: 'CLI-005', nombre: 'Alkosto S.A.', ciudad: 'Cali', empresaNombre: 'Corbeta' },
+      ];
+      defaults.forEach((d) => {
+        seenNames.add(d.nombre.toLowerCase().trim());
+        list.push(d);
+      });
+    }
+
+    // If clienteHoy is defined and not yet in list, ensure it's included
+    if (
+      clienteHoy &&
+      clienteHoy !== 'Sin cliente asignado' &&
+      !seenNames.has(clienteHoy.toLowerCase().trim())
+    ) {
+      list.unshift({
+        id: 'CLI-TODAY',
+        nombre: clienteHoy,
+        ciudad: todayShift?.ciudad,
+        empresaNombre: todayShift?.empresaNombre,
+      });
+    }
+
+    return list;
+  }, [clients, clienteHoy, todayShift]);
+
+  // Filtered client options based on driver search query
+  const filteredClientOptions = useMemo(() => {
+    const term = clientSearchTerm.trim().toLowerCase();
+    if (!term) return availableClientOptions;
+    return availableClientOptions.filter((c) => {
+      const matchName = c.nombre.toLowerCase().includes(term);
+      const matchCity = c.ciudad ? c.ciudad.toLowerCase().includes(term) : false;
+      const matchEmp = c.empresaNombre ? c.empresaNombre.toLowerCase().includes(term) : false;
+      return matchName || matchCity || matchEmp;
+    });
+  }, [availableClientOptions, clientSearchTerm]);
+
+  const currentSelectedClientName = selectedClientForReport || clienteHoy || availableClientOptions[0]?.nombre || '';
+  const currentSelectedClientObj = availableClientOptions.find(
+    (c) => c.nombre.toLowerCase().trim() === currentSelectedClientName.toLowerCase().trim()
+  );
+
+  // Access validation form state for drivers without direct link
+  const [accessValidationInput, setAccessValidationInput] = useState('');
+  const [accessValidationMsg, setAccessValidationMsg] = useState<{ error?: string; success?: string } | null>(null);
 
   // Submit Daily Report
   const [isSavedRecently, setIsSavedRecently] = useState<boolean>(false);
@@ -334,14 +652,17 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
 
     if (!selectedDriver) return;
 
-    const chosenClient = selectedClientForReport || clienteHoy || 'Almacenes Éxito S.A.';
+    const chosenClient = currentSelectedClientName || selectedClientForReport || clienteHoy || 'Almacenes Éxito S.A.';
+    const chosenPosName = todayShift?.puntoVentaNombre;
+    const matchingClient = clients.find((c) => c.nombre === chosenClient);
 
     const countSalidas = Number(salidasFueraPerimetro) || 0;
 
     const newReport: ClientOrderReport = {
       id: `REP-${Date.now()}`,
-      clienteId: chosenClient.includes('Éxito') ? 'CLI-001' : chosenClient.includes('Homecenter') ? 'CLI-002' : 'CLI-003',
+      clienteId: matchingClient?.id || (chosenClient.includes('Éxito') ? 'CLI-001' : chosenClient.includes('Homecenter') ? 'CLI-002' : 'CLI-003'),
       nombreCliente: chosenClient,
+      puntoVentaNombre: chosenPosName,
       repartidorId: selectedDriver.id,
       nombreRepartidor: `${selectedDriver.nombre} ${selectedDriver.apellido}`,
       placaVehiculo: selectedDriver.placaVehiculo || 'VTX-89D',
@@ -446,54 +767,82 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
             </div>
           </div>
 
-          {isRepartidorRole ? (
-            <div className="bg-white border border-blue-200/90 p-4 rounded-2xl w-full sm:w-72 shadow-2xs">
-              <div className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center space-x-1.5 mb-2">
-                <ShieldCheck className="w-4 h-4 text-blue-600" />
-                <span>Sesión de Repartidor</span>
-              </div>
-              <div className="text-sm font-black text-slate-900 tracking-tight">
-                {selectedDriver.nombre} {selectedDriver.apellido}
-              </div>
-              <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between font-semibold border-t border-slate-100 pt-2">
-                <span>C.C. <strong className="text-slate-800 font-mono">{selectedDriver.cedula}</strong></span>
-                <span>Placa: <strong className="text-red-700 font-mono font-black bg-red-50 px-2 py-0.5 rounded border border-red-200">{selectedDriver.placaVehiculo || 'VTX-89D'}</strong></span>
-              </div>
+          <div className="bg-white border border-blue-200/90 p-4 rounded-2xl w-full sm:w-72 shadow-2xs">
+            <div className="text-[10px] font-black uppercase text-blue-700 tracking-wider flex items-center space-x-1.5 mb-2">
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              <span>Sesión Exclusiva de Repartidor</span>
             </div>
-          ) : (
-            <div className="bg-white border border-purple-200 p-4 rounded-2xl w-full sm:w-72 shadow-2xs">
-              <label className="text-[11px] font-black uppercase text-purple-800 tracking-wider flex items-center space-x-1.5 mb-2">
-                <UserCheck className="w-4 h-4 text-purple-600" />
-                <span>Supervisión (Admin)</span>
-              </label>
-              {drivers.length === 0 ? (
-                <p className="text-xs text-slate-500 italic py-1">No hay repartidores registrados.</p>
-              ) : (
-                <select
-                  value={selectedDriverId}
-                  onChange={(e) => {
-                    setSelectedDriverId(e.target.value);
-                    setAuditPhoto(null);
-                    setAuditPhotoLocked(false);
-                    setShiftStatus('PENDIENTE_INICIO');
-                  }}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                >
-                  {drivers.map((drv) => (
-                    <option key={drv.id} value={drv.id}>
-                      {drv.nombre} {drv.apellido} - {drv.placaVehiculo || 'VTX-89D'}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <div className="mt-2.5 text-[11px] text-slate-500 flex items-center justify-between font-semibold border-t border-slate-100 pt-2">
-                <span>Cargo: <strong className="text-slate-800">{selectedDriver?.cargo || 'Repartidor'}</strong></span>
-                <span>Placa: <strong className="text-red-700 font-mono font-black">{selectedDriver?.placaVehiculo || 'VTX-89D'}</strong></span>
-              </div>
+            <div className="text-sm font-black text-slate-900 tracking-tight">
+              {selectedDriver.nombre} {selectedDriver.apellido}
             </div>
-          )}
+            <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between font-semibold border-t border-slate-100 pt-2">
+              <span>C.C. <strong className="text-slate-800 font-mono">{selectedDriver.cedula}</strong></span>
+              <span>Placa: <strong className="text-red-700 font-mono font-black bg-red-50 px-2 py-0.5 rounded border border-red-200">{selectedDriver.placaVehiculo || 'VTX-89D'}</strong></span>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* VALIDACIÓN OBLIGATORIA DE ENLACE DE REPARTIDOR (PRIORIDAD 1) */}
+      {!matchedDriver && !inviteEmail && !inviteEmpId && (
+        <div className="p-5 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl shadow-sm text-slate-800 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-black text-slate-900">
+                🔒 Acceso Exclusivo de Repartidor mediante Enlace Oficial
+              </h4>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Para garantizar la confidencialidad de la programación de turnos y que <strong>únicamente tú puedas ver tus turnos asignados</strong>, es obligatorio ingresar con tu enlace personal único enviado a tu correo o WhatsApp por tu Jefe de Zona.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 flex flex-col sm:flex-row items-center gap-2.5">
+            <label className="text-xs font-bold text-slate-700 whitespace-nowrap">
+              Validar mi identidad con Cédula o Correo:
+            </label>
+            <input
+              type="text"
+              value={accessValidationInput}
+              onChange={(e) => setAccessValidationInput(e.target.value)}
+              placeholder="Ingresa tu cédula o correo registrado..."
+              className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-slate-50 text-slate-900 focus:ring-2 focus:ring-amber-500 w-full"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const clean = cleanDigits(accessValidationInput);
+                const email = accessValidationInput.trim().toLowerCase();
+                const found = employees.find(
+                  (e) =>
+                    (e.rol === 'Repartidor' || e.cargo.toLowerCase().includes('repartidor')) &&
+                    ((clean && cleanDigits(e.cedula) === clean) ||
+                      (clean && cleanDigits(e.id) === clean) ||
+                      (e.email && e.email.trim().toLowerCase() === email))
+                );
+                if (found) {
+                  setDriverValidationOverride(found);
+                  setAccessValidationMsg({ success: `¡Identidad validada con éxito para ${found.nombre} ${found.apellido}!` });
+                } else {
+                  setAccessValidationMsg({ error: 'No se encontró un repartidor activo con ese documento o correo. Solicita tu enlace a tu Jefe de Zona.' });
+                }
+              }}
+              className="w-full sm:w-auto px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer transition-colors"
+            >
+              Validar Acceso
+            </button>
+          </div>
+          {accessValidationMsg?.error && (
+            <p className="text-xs text-red-600 font-bold px-1">{accessValidationMsg.error}</p>
+          )}
+          {accessValidationMsg?.success && (
+            <p className="text-xs text-emerald-700 font-bold px-1">{accessValidationMsg.success}</p>
+          )}
+        </div>
+      )}
 
       {/* Success Notification Alert */}
       {successMessage && (
@@ -515,27 +864,118 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
-            <Calendar className="w-5 h-5 text-indigo-600" />
+            <Calendar className="w-5 h-5 text-indigo-600 shrink-0" />
             <div>
               <h3 className="font-black text-sm text-slate-900">
                 1. Programación Semanal de Turnos para {selectedDriver?.nombre} {selectedDriver?.apellido}
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Consulta los clientes asignados y el horario programado por tu Jefe de Zona para esta semana.
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <span className="text-xs font-mono font-bold text-slate-700 bg-slate-200/70 px-2 py-0.5 rounded-md">
+                  {formatWeekRangeSpanish(selectedWeek)}
+                </span>
+                {selectedWeek === currentMonday && (
+                  <span className="text-[11px] font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center space-x-1 shadow-2xs">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                    <span>Semana en Curso (Actual)</span>
+                  </span>
+                )}
+                {availableWeeks.find((w) => w.value === selectedWeek)?.isCurrentMonth && selectedWeek !== currentMonday && (
+                  <span className="text-[11px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                    Mes en Curso ({currentMonthLabel})
+                  </span>
+                )}
+                {driverSchedule ? (
+                  <span className="text-[11px] font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                    ✓ Turnos Asignados
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    Sin Turnos Registrados
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-1.5 pl-1 text-xs font-bold">
-            <span className="text-slate-500">Semana:</span>
-            <select
-              value={selectedWeek}
-              onChange={(e) => setSelectedWeek(e.target.value)}
-              className="bg-white border border-slate-300 rounded-xl px-3 py-1.5 font-mono text-xs text-slate-800 font-bold focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+          {/* Dynamic Week Selection Controls */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+            {/* Quick jump to current week button */}
+            <button
+              type="button"
+              onClick={() => setSelectedWeek(currentMonday)}
+              className={`px-2.5 py-1.5 rounded-xl border flex items-center space-x-1.5 transition-all cursor-pointer ${
+                selectedWeek === currentMonday
+                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                  : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300'
+              }`}
+              title="Ir a la semana en curso"
             >
-              <option value="2026-08-03">03 de Agosto - 09 de Agosto 2026</option>
-              <option value="2026-08-10">10 de Agosto - 16 de Agosto 2026</option>
-            </select>
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Semana Actual</span>
+            </button>
+
+            {/* Previous / Select / Next Week navigation bar */}
+            <div className="inline-flex items-center rounded-xl shadow-2xs border border-slate-300 bg-white overflow-hidden">
+              <button
+                type="button"
+                onClick={handlePrevWeek}
+                disabled={!canGoPrev}
+                className="px-2 py-1.5 text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors border-r border-slate-200"
+                title="Semana anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* Dynamic Week Select with optgroups by current month, shifts and other weeks */}
+              <select
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                className="bg-transparent px-3 py-1.5 font-mono text-xs text-slate-800 font-bold focus:outline-none cursor-pointer max-w-[260px] sm:max-w-[320px] truncate"
+              >
+                {/* 1. Group: Mes en Curso */}
+                {currentMonthWeeks.length > 0 && (
+                  <optgroup label={`📅 Mes en Curso (${currentMonthLabel})`}>
+                    {currentMonthWeeks.map((w) => (
+                      <option key={w.value} value={w.value}>
+                        {w.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+
+                {/* 2. Group: Otras Semanas con Turno Asignado */}
+                {otherScheduledWeeks.length > 0 && (
+                  <optgroup label="📋 Otras Semanas con Turno Asignado">
+                    {otherScheduledWeeks.map((w) => (
+                      <option key={w.value} value={w.value}>
+                        {w.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+
+                {/* 3. Group: Otras Semanas Disponibles */}
+                {otherWeeks.length > 0 && (
+                  <optgroup label="🗓️ Otras Semanas">
+                    {otherWeeks.map((w) => (
+                      <option key={w.value} value={w.value}>
+                        {w.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+
+              <button
+                type="button"
+                onClick={handleNextWeek}
+                disabled={!canGoNext}
+                className="px-2 py-1.5 text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors border-l border-slate-200"
+                title="Semana siguiente"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -546,17 +986,35 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3 border border-indigo-100">
                 <Calendar className="w-6 h-6" />
               </div>
-              <h4 className="text-sm font-bold text-slate-800">Sin programación de turnos para esta semana</h4>
+              <h4 className="text-sm font-bold text-slate-800">
+                Sin programación de turnos para la semana del {formatWeekRangeSpanish(selectedWeek)}
+              </h4>
               <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
                 No hay turnos registrados en el sistema para la semana seleccionada. Tu Jefe de Zona asignará la programación de turnos y clientes correspondientes.
               </p>
+              {selectedWeek !== currentMonday && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedWeek(currentMonday)}
+                  className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center space-x-2 cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Volver a la Semana en Curso</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-              {daysOfWeek.map((dayName) => {
+              {daysOfWeek.map((dayName, dayIndex) => {
                 const dayData = driverSchedule.dias[dayName];
-                const isToday = dayName === 'Lunes';
+                const isToday = selectedWeek === currentMonday && dayName === todayDayName;
                 const isDescanso = !dayData || dayData.tipo === 'Descanso';
+
+                // Calendar date for this day
+                const [y, m, d] = selectedWeek.split('-').map(Number);
+                const dayDateObj = new Date(y, m - 1, d + dayIndex);
+                const dayNumberStr = String(dayDateObj.getDate()).padStart(2, '0');
+                const monthShortStr = MONTHS_SPANISH[dayDateObj.getMonth()]?.slice(0, 3) || '';
 
                 return (
                   <div
@@ -572,7 +1030,7 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className={`text-xs font-black uppercase ${isToday ? 'text-red-900' : 'text-slate-700'}`}>
-                          {dayName}
+                          {dayName} <span className="font-mono text-[10px] text-slate-400 font-normal">({dayNumberStr} {monthShortStr})</span>
                         </span>
                         {isToday && (
                           <span className="px-1.5 py-0.5 bg-red-600 text-white font-extrabold text-[9px] rounded-md uppercase tracking-wider shadow-2xs shadow-red-600/20">
@@ -610,9 +1068,17 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                       {!isDescanso && dayData ? (
                         <div className="space-y-1.5 text-xs">
                           <div className="font-extrabold text-slate-900 text-xs flex items-center space-x-1">
-                            <Building2 className="w-3 h-3 text-indigo-600 shrink-0" />
+                            <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                             <span className="truncate">{dayData.clienteNombre || 'Sin cliente'}</span>
                           </div>
+
+                          {dayData.puntoVentaNombre && (
+                            <div className="text-[11px] font-bold text-red-700 bg-red-50/80 px-2 py-0.5 rounded-md border border-red-200/80 flex items-center space-x-1">
+                              <MapPin className="w-3 h-3 text-red-600 shrink-0" />
+                              <span className="truncate">PDV: {dayData.puntoVentaNombre}</span>
+                              {dayData.ciudad && <span className="text-slate-500 font-normal">({dayData.ciudad})</span>}
+                            </div>
+                          )}
 
                           <div className="font-mono text-[11px] text-slate-600 bg-slate-100/80 p-1.5 rounded-lg border border-slate-200/60 font-semibold space-y-0.5">
                             {dayData.tipo === 'Partido' ? (
@@ -710,8 +1176,8 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                    <label className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs cursor-pointer shadow-sm transition-all flex items-center space-x-2">
+                  <div className="flex items-center justify-center pt-2">
+                    <label className="px-5 py-3 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs cursor-pointer shadow-sm transition-all flex items-center space-x-2 active:scale-95">
                       <Camera className="w-4 h-4" />
                       <span>Capturar / Seleccionar Foto</span>
                       <input
@@ -722,15 +1188,6 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                         className="hidden"
                       />
                     </label>
-
-                    <button
-                      type="button"
-                      onClick={handleSimulatePhoto}
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm transition-all flex items-center space-x-1.5"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Simular Foto Auditoría</span>
-                    </button>
                   </div>
                 </div>
               )}
@@ -749,6 +1206,12 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
                   <p className="text-xs text-slate-500">
                     Cliente Hoy: <strong className="text-slate-900">{clienteHoy}</strong> ({isTurnoPartido ? 'Turno Partido' : 'Jornada Continua'})
                   </p>
+                  {todayShift?.puntoVentaNombre && (
+                    <p className="text-[11px] text-red-700 font-bold flex items-center space-x-1 mt-0.5">
+                      <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                      <span>PDV Asignado: <strong>{todayShift.puntoVentaNombre}</strong> {todayShift.ciudad ? `(${todayShift.ciudad})` : ''}</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -923,23 +1386,154 @@ export const DriverPortalView: React.FC<DriverPortalViewProps> = ({
               )}
             </div>
 
-            {/* Cliente Asignado */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-800 flex items-center space-x-1.5">
-                <Building2 className="w-4 h-4 text-indigo-600" />
-                <span>Cliente de la Entrega</span>
-              </label>
-              <select
-                value={selectedClientForReport || clienteHoy}
-                onChange={(e) => setSelectedClientForReport(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:bg-white cursor-pointer"
-              >
-                <option value="Almacenes Éxito S.A.">Almacenes Éxito S.A.</option>
-                <option value="Homecenter Colombia">Homecenter Colombia</option>
-                <option value="Decathlon Colombia">Decathlon Colombia</option>
-                <option value="Mercado Libre S.A.S.">Mercado Libre S.A.S.</option>
-                <option value="Alkosto S.A.">Alkosto S.A.</option>
-              </select>
+            {/* Cliente Asignado con Buscador Rápido */}
+            <div className="space-y-1.5" ref={clientPickerRef}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-slate-800 flex items-center space-x-1.5">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  <span>Cliente de la Entrega</span>
+                </label>
+                {clienteHoy && clienteHoy !== 'Sin cliente asignado' && currentSelectedClientName !== clienteHoy && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedClientForReport(clienteHoy);
+                      setClientSearchTerm('');
+                      setIsClientSearchOpen(false);
+                    }}
+                    className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer flex items-center space-x-1"
+                    title="Seleccionar el cliente programado en tu turno de hoy"
+                  >
+                    <span>⚡ Turno hoy: {clienteHoy.length > 18 ? clienteHoy.slice(0, 16) + '...' : clienteHoy}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Botón trigger / selector actual */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsClientSearchOpen((prev) => !prev)}
+                  className={`w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/80 border rounded-xl text-left flex items-center justify-between transition-all cursor-pointer shadow-2xs ${
+                    isClientSearchOpen ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-white' : 'border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 min-w-0 pr-2">
+                    <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-xs font-black text-slate-900 block truncate">
+                        {currentSelectedClientName || 'Seleccionar cliente de entrega...'}
+                      </span>
+                      {currentSelectedClientObj?.ciudad && (
+                        <span className="text-[10px] font-semibold text-slate-500 block truncate">
+                          📍 {currentSelectedClientObj.ciudad} {currentSelectedClientObj.empresaNombre ? `• ${currentSelectedClientObj.empresaNombre}` : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-1.5 shrink-0 text-slate-400">
+                    <span className="text-[10px] font-extrabold text-slate-400 hidden sm:inline">Buscar</span>
+                    <Search className="w-3.5 h-3.5 text-slate-500" />
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isClientSearchOpen ? 'rotate-180 text-indigo-600' : ''}`} />
+                  </div>
+                </button>
+
+                {/* Dropdown flotante con buscador en tiempo real */}
+                {isClientSearchOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 z-30 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden animate-fade-in">
+                    {/* Barra de búsqueda con autoFocus */}
+                    <div className="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center space-x-2">
+                      <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          autoFocus
+                          value={clientSearchTerm}
+                          onChange={(e) => setClientSearchTerm(e.target.value)}
+                          placeholder="Buscar cliente, sede o ciudad..."
+                          className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        {clientSearchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setClientSearchTerm('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Lista scrolleable de clientes */}
+                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 p-1">
+                      {filteredClientOptions.length > 0 ? (
+                        filteredClientOptions.map((cli) => {
+                          const isSelected = cli.nombre.toLowerCase().trim() === currentSelectedClientName.toLowerCase().trim();
+                          const isTodayClient = clienteHoy && cli.nombre.toLowerCase().trim() === clienteHoy.toLowerCase().trim();
+                          return (
+                            <button
+                              key={cli.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedClientForReport(cli.nombre);
+                                setClientSearchTerm('');
+                                setIsClientSearchOpen(false);
+                              }}
+                              className={`w-full px-3 py-2 text-left rounded-xl transition-all flex items-center justify-between cursor-pointer ${
+                                isSelected
+                                  ? 'bg-indigo-50 text-indigo-950 font-bold border border-indigo-200'
+                                  : 'hover:bg-slate-50 text-slate-700'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-2">
+                                <div className="flex items-center space-x-1.5">
+                                  <span className={`text-xs ${isSelected ? 'font-black text-indigo-950' : 'font-bold text-slate-900'} truncate`}>
+                                    {cli.nombre}
+                                  </span>
+                                  {isTodayClient && (
+                                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-md shrink-0">
+                                      Turno Hoy
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-2 text-[10px] text-slate-500 mt-0.5">
+                                  {cli.ciudad && <span className="font-semibold text-slate-600">📍 {cli.ciudad}</span>}
+                                  {cli.empresaNombre && cli.empresaNombre !== cli.nombre && (
+                                    <span className="truncate opacity-80">🏢 {cli.empresaNombre}</span>
+                                  )}
+                                </div>
+                              </div>
+                              {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 ml-2" />}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="py-6 px-4 text-center">
+                          <p className="text-xs text-slate-500">
+                            No se encontraron clientes para <strong className="text-slate-800">"{clientSearchTerm}"</strong>.
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            Solo se pueden seleccionar clientes registrados por la administración.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer informativo */}
+                    <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                      <span>{filteredClientOptions.length} de {availableClientOptions.length} clientes</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsClientSearchOpen(false)}
+                        className="text-slate-600 hover:text-slate-900 font-bold hover:underline"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* REQUERIMIENTO 4: INGRESAR MANUALMENTE CANTIDAD DE PAQUETES (SOLO NUMERO SIN MAS INFORMACION) */}

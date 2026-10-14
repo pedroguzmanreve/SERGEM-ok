@@ -17,6 +17,209 @@ export const DAYS_SPANISH: ('Domingo' | 'Lunes' | 'Martes' | 'Miércoles' | 'Jue
   'Sábado',
 ];
 
+export const MONTHS_SPANISH = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
+
+/**
+ * Returns the Monday (ISO week start) of any given date in "YYYY-MM-DD" format
+ */
+export function getMondayOfDate(refDate: Date = new Date()): string {
+  const d = new Date(refDate);
+  const day = d.getDay(); // 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${dayStr}`;
+}
+
+/**
+ * Formats a Monday ISO string (YYYY-MM-DD) into a friendly Colombian week range string
+ * e.g., "05 al 11 de Octubre 2026"
+ */
+export function formatWeekRangeSpanish(mondayStr: string): string {
+  if (!mondayStr) return '';
+  const parts = mondayStr.split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[0])) return mondayStr;
+  const [y, m, d] = parts;
+  const mon = new Date(y, m - 1, d);
+  const sun = new Date(y, m - 1, d + 6);
+
+  const mDay = String(mon.getDate()).padStart(2, '0');
+  const mMonth = MONTHS_SPANISH[mon.getMonth()];
+  const sDay = String(sun.getDate()).padStart(2, '0');
+  const sMonth = MONTHS_SPANISH[sun.getMonth()];
+  const sYear = sun.getFullYear();
+
+  if (mMonth === sMonth) {
+    return `${mDay} al ${sDay} de ${mMonth} ${sYear}`;
+  }
+  return `${mDay} de ${mMonth} al ${sDay} de ${sMonth} ${sYear}`;
+}
+
+export interface WeekOption {
+  value: string; // YYYY-MM-DD (Monday)
+  label: string; // "05 al 11 de Octubre 2026 (Semana Actual)"
+  isCurrentWeek: boolean;
+  isCurrentMonth: boolean;
+  hasSchedule?: boolean;
+  monthName: string;
+  year: number;
+  monthLabel: string;
+}
+
+/**
+ * Normalizes any week date representation (ISO YYYY-MM-DD, Excel serial integer e.g. 46309,
+ * Colombian DD/MM/YYYY, or arbitrary day of the week) into the ISO YYYY-MM-DD format of that week's MONDAY.
+ */
+export function normalizeExcelWeekDate(rawVal: any, fallback?: string): string {
+  if (rawVal === null || rawVal === undefined || rawVal === '') {
+    return fallback ? normalizeExcelWeekDate(fallback) : getMondayOfDate();
+  }
+
+  // 1. If numeric Excel serial date (e.g. 46309)
+  const num = typeof rawVal === 'number' ? rawVal : Number(String(rawVal).trim());
+  if (!isNaN(num) && num > 30000 && num < 60000 && !String(rawVal).includes('-') && !String(rawVal).includes('/')) {
+    const d = new Date((num - 25569) * 86400 * 1000);
+    return getMondayOfDate(d);
+  }
+
+  const str = String(rawVal).trim();
+
+  // 2. If ISO string YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return getMondayOfDate(new Date(str.slice(0, 10) + 'T12:00:00'));
+  }
+
+  // 3. If DD/MM/YYYY or DD-MM-YYYY
+  const partsDmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (partsDmy) {
+    const day = parseInt(partsDmy[1], 10);
+    const month = parseInt(partsDmy[2], 10) - 1;
+    const year = parseInt(partsDmy[3], 10);
+    const d = new Date(year, month, day, 12, 0, 0);
+    return getMondayOfDate(d);
+  }
+
+  // 4. Try standard Date parsing
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return getMondayOfDate(parsed);
+  }
+
+  return fallback ? normalizeExcelWeekDate(fallback) : getMondayOfDate();
+}
+
+/**
+ * Returns all available schedule weeks for selection, dynamically updated according to
+ * the current month in course, adjacent months, and all existing schedules in the database.
+ */
+export function getAvailableScheduleWeeks(
+  schedules: WeeklySchedule[] = [],
+  repartidorId?: string,
+  refDate: Date = new Date(),
+  driverRecord?: { id?: string; cedula?: string; email?: string }
+): WeekOption[] {
+  const currentMonday = getMondayOfDate(refDate);
+  const weekSet = new Set<string>();
+
+  // 1. Add all unique weeks present in existing schedules (normalizing any format e.g. Excel serials)
+  schedules.forEach((s) => {
+    if (s.semanaInicio) {
+      const norm = normalizeExcelWeekDate(s.semanaInicio);
+      if (norm) weekSet.add(norm);
+    }
+  });
+
+  // 2. Generate weeks covering 2 months prior, the current month in course, and 2 months ahead
+  const startRef = new Date(refDate.getFullYear(), refDate.getMonth() - 2, 1);
+  const endRef = new Date(refDate.getFullYear(), refDate.getMonth() + 3, 0);
+
+  const iter = new Date(startRef);
+  while (iter <= endRef) {
+    const monday = getMondayOfDate(iter);
+    weekSet.add(monday);
+    iter.setDate(iter.getDate() + 7);
+  }
+
+  // Guarantee current week is included
+  weekSet.add(currentMonday);
+
+  // Sort ascending: chronological order
+  const sortedWeeks = Array.from(weekSet).sort();
+
+  return sortedWeeks.map((weekVal) => {
+    const [y, m, d] = weekVal.split('-').map(Number);
+    const mon = new Date(y, m - 1, d);
+    const sun = new Date(y, m - 1, d + 6);
+
+    const isCurrent = weekVal === currentMonday;
+    const isThisMonth =
+      (mon.getMonth() === refDate.getMonth() && mon.getFullYear() === refDate.getFullYear()) ||
+      (sun.getMonth() === refDate.getMonth() && sun.getFullYear() === refDate.getFullYear());
+
+    const hasSched = (repartidorId || driverRecord)
+      ? schedules.some((s) => {
+          const sWeek = normalizeExcelWeekDate(s.semanaInicio, weekVal);
+          if (sWeek !== weekVal) return false;
+          const sRepId = (s.repartidorId || '').trim();
+          if (!sRepId) return false;
+
+          const testId = repartidorId || driverRecord?.id || '';
+          if (testId && sRepId === testId) return true;
+          if (testId && sRepId.replace(/^EMP-?/i, '') === testId.replace(/^EMP-?/i, '')) return true;
+
+          const cedulaClean = (driverRecord?.cedula || testId).replace(/\D/g, '');
+          const sRepClean = sRepId.replace(/\D/g, '');
+          if (cedulaClean && sRepClean && cedulaClean === sRepClean) return true;
+          if (cedulaClean && sRepId.includes(cedulaClean)) return true;
+
+          return false;
+        })
+      : schedules.some((s) => normalizeExcelWeekDate(s.semanaInicio, weekVal) === weekVal);
+
+    const baseLabel = formatWeekRangeSpanish(weekVal);
+    let label = baseLabel;
+    if (isCurrent && hasSched) {
+      label += ' (Semana Actual • Con Turno)';
+    } else if (isCurrent) {
+      label += ' (Semana Actual)';
+    } else if (hasSched) {
+      label += ' • Con Turno';
+    }
+
+    // Identify representative month
+    const targetMonthDate = sun.getMonth() === refDate.getMonth() ? sun : mon;
+    const monthName = MONTHS_SPANISH[targetMonthDate.getMonth()];
+    const year = targetMonthDate.getFullYear();
+    const monthLabel = `${monthName} ${year}`;
+
+    return {
+      value: weekVal,
+      label,
+      isCurrentWeek: isCurrent,
+      isCurrentMonth: isThisMonth,
+      hasSchedule: hasSched,
+      monthName,
+      year,
+      monthLabel,
+    };
+  });
+}
+
 /**
  * Returns current date and time info in standard Colombian format
  */

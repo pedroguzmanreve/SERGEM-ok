@@ -60,11 +60,21 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'Portal Clientes & Reportes',
       icon: Building2,
       badge: 'Clientes & 42h',
-      allowedRoles: ['Administrativo', 'Jefe de Zona'],
+      allowedRoles: ['Administrativo'],
     },
   ];
 
+  // Ni Repartidor ni Jefe de Zona tienen acceso a portales administrativos ni creación de clientes.
+  // Al tener un único portal asignado, no se muestra barra de navegación con accesos cruzados.
+  if (currentRole === 'Repartidor' || currentRole === 'Jefe de Zona' || activeTab === 'driver-portal' || activeTab === 'zone-chief') {
+    return null;
+  }
+
   const visibleTabs = allTabs.filter((t) => t.allowedRoles.includes(currentRole));
+
+  if (visibleTabs.length <= 1) {
+    return null;
+  }
 
   return (
     <nav id="main-navigation" className="bg-white border-b border-slate-200/90 sticky top-[57px] z-20 shadow-2xs">

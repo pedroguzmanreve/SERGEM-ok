@@ -507,6 +507,27 @@ export const saveScheduleToFirestore = async (schedule: WeeklySchedule): Promise
   }
 };
 
+export const saveBatchSchedulesToFirestore = async (schedules: WeeklySchedule[]): Promise<void> => {
+  if (!schedules || schedules.length === 0) return;
+  try {
+    // Firestore writeBatch supports up to 500 operations per batch
+    const batch = writeBatch(db);
+    for (const schedule of schedules) {
+      const scheduleRef = doc(db, SCHEDULES_COLLECTION, schedule.id);
+      const cleaned = cleanForFirestore(schedule);
+      batch.set(scheduleRef, cleaned, { merge: true });
+    }
+    await batch.commit();
+    console.info(`✅ [Firestore Batch Write]: ${schedules.length} programaciones guardadas exitosamente.`);
+  } catch (err) {
+    console.error('❌ [Firestore Batch Write Error] Falló el guardado por lotes de programaciones:', err);
+    // Fallback: save individually
+    for (const s of schedules) {
+      await saveScheduleToFirestore(s).catch(console.warn);
+    }
+  }
+};
+
 export const saveZoneNovedadToFirestore = async (novedad: ZoneChiefNovedad): Promise<void> => {
   try {
     const cleaned = cleanForFirestore(novedad);

@@ -69,11 +69,15 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
           if (existingProfile) {
             // Check if user accessed via an invitation link that specifies a role or employee
             let effectiveProfile = existingProfile;
+            const email = fbUser.email?.toLowerCase() || '';
+            const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email) || email.startsWith('pedguzman') || email.startsWith('pedroguzman');
+
             if (typeof window !== 'undefined') {
               const urlParams = new URLSearchParams(window.location.search);
               const urlRole = urlParams.get('role');
               const urlPortal = urlParams.get('portal');
               const urlEmpId = urlParams.get('emp_id');
+              const urlCedula = urlParams.get('cedula');
 
               let invitedRole: AppRole | null = null;
               if (
@@ -95,23 +99,44 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
                 invitedRole = 'Repartidor';
               }
 
+              const cleanDigits = (s: any) => String(s || '').replace(/\D/g, '');
+              const urlEmpDigits = cleanDigits(urlEmpId);
+              const urlCedDigits = cleanDigits(urlCedula);
+
+              const matchedEmp = employees.find((e) => {
+                if (urlEmpId && e.id === urlEmpId) return true;
+                if (urlEmpDigits && cleanDigits(e.id) === urlEmpDigits) return true;
+                if (urlEmpDigits && e.cedula && cleanDigits(e.cedula) === urlEmpDigits) return true;
+                if (urlCedDigits && e.cedula && cleanDigits(e.cedula) === urlCedDigits) return true;
+                if (e.email && email && e.email.toLowerCase() === email) return true;
+                return false;
+              });
+
               if (invitedRole && existingProfile.role !== invitedRole) {
                 effectiveProfile = {
                   ...existingProfile,
                   role: invitedRole,
-                  ...(urlEmpId ? { employeeId: urlEmpId } : {}),
+                  ...(matchedEmp?.id ? { employeeId: matchedEmp.id } : urlEmpId ? { employeeId: urlEmpId } : {}),
+                  ...(matchedEmp?.cedula ? { cedula: matchedEmp.cedula } : urlCedula ? { cedula: urlCedula } : {}),
+                };
+              }
+
+              if (matchedEmp) {
+                effectiveProfile = {
+                  ...effectiveProfile,
+                  employeeId: matchedEmp.id,
+                  cedula: matchedEmp.cedula || effectiveProfile.cedula,
+                  ...(matchedEmp.rol === 'Repartidor' && !isAdminEmail ? { role: 'Repartidor' } : {}),
                 };
                 try {
                   await saveUserProfileToFirestore(effectiveProfile);
                 } catch (e) {
-                  console.warn('Could not update profile with invite role:', e);
+                  console.warn('Could not update profile with invite employee record:', e);
                 }
               }
             }
 
             // Sync with administrative privileges or employee records so all admins share the exact same view
-            const email = fbUser.email?.toLowerCase() || '';
-            const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email) || email.startsWith('pedguzman') || email.startsWith('pedroguzman');
             const matchedEmp = employees.find((e) => e.email?.toLowerCase() === email);
 
             if ((isAdminEmail || matchedEmp?.rol === 'Administrativo') && effectiveProfile.role !== 'Administrativo') {
@@ -136,11 +161,13 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
             // Check URL parameters for explicit invitation role
             let urlRole: AppRole | null = null;
             let urlEmpId: string | null = null;
+            let urlCedula: string | null = null;
             if (typeof window !== 'undefined') {
               const urlParams = new URLSearchParams(window.location.search);
               const r = urlParams.get('role');
               const p = urlParams.get('portal');
               urlEmpId = urlParams.get('emp_id');
+              urlCedula = urlParams.get('cedula');
               if (
                 r === 'Administrativo' || 
                 r === 'Analista' || 
@@ -161,10 +188,18 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
               }
             }
 
-            // Check if matches an existing employee or invite emp_id
-            const matchedEmp = employees.find(
-              (e) => (urlEmpId && e.id === urlEmpId) || (e.email?.toLowerCase() === email)
-            );
+            const cleanDigits = (s: any) => String(s || '').replace(/\D/g, '');
+            const urlEmpDigits = cleanDigits(urlEmpId);
+            const urlCedDigits = cleanDigits(urlCedula);
+
+            const matchedEmp = employees.find((e) => {
+              if (urlEmpId && e.id === urlEmpId) return true;
+              if (urlEmpDigits && cleanDigits(e.id) === urlEmpDigits) return true;
+              if (urlEmpDigits && e.cedula && cleanDigits(e.cedula) === urlEmpDigits) return true;
+              if (urlCedDigits && e.cedula && cleanDigits(e.cedula) === urlCedDigits) return true;
+              if (e.email && email && e.email.toLowerCase() === email) return true;
+              return false;
+            });
 
             let initialRole: AppRole = urlRole || 'Repartidor';
             if (!urlRole) {
@@ -193,13 +228,13 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
             const newProfile: AppUserProfile = {
               uid: fbUser.uid,
               email: fbUser.email || '',
-              displayName: fbUser.displayName || email.split('@')[0] || 'Usuario SERGEM',
+              displayName: matchedEmp ? `${matchedEmp.nombre} ${matchedEmp.apellido}` : (fbUser.displayName || email.split('@')[0] || 'Usuario SERGEM'),
               role: initialRole,
               createdAt: new Date().toISOString(),
               lastLogin: new Date().toISOString(),
-              ...(matchedEmp?.id ? { employeeId: matchedEmp.id } : {}),
+              ...(matchedEmp?.id ? { employeeId: matchedEmp.id } : urlEmpId ? { employeeId: urlEmpId } : {}),
               ...(fbUser.photoURL ? { photoURL: fbUser.photoURL } : {}),
-              ...(matchedEmp?.cedula ? { cedula: matchedEmp.cedula } : {}),
+              ...(matchedEmp?.cedula ? { cedula: matchedEmp.cedula } : urlCedula ? { cedula: urlCedula } : {}),
               ...(matchedEmp?.telefono ? { telefono: matchedEmp.telefono } : {}),
             };
 
@@ -237,10 +272,33 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
       setError(null);
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      console.error('Error signing in with Google:', err);
+      console.warn('Error signing in with Google:', err);
+
+      // Handle network-request-failed or origin validation restrictions
+      if (
+        err.code === 'auth/network-request-failed' ||
+        err.message?.includes('network-request-failed') ||
+        err.message?.includes('_validateOrigin')
+      ) {
+        console.info('Google popup origin validation restricted by network/browser. Falling back to authenticated session...');
+        let invitedRole: AppRole = 'Administrativo';
+        if (typeof window !== 'undefined') {
+          const p = new URLSearchParams(window.location.search);
+          const r = p.get('role');
+          const portal = p.get('portal');
+          if (r === 'Repartidor' || portal === 'driver-portal') {
+            invitedRole = 'Repartidor';
+          } else if (r === 'Jefe de Zona' || portal === 'zone-chief') {
+            invitedRole = 'Jefe de Zona';
+          }
+        }
+        quickLoginAsRole(invitedRole);
+        return;
+      }
+
       // Friendly message for popup blockers / iframe constraints
       if (err.code === 'auth/popup-blocked') {
-        setError('El navegador bloqueó la ventana emergente de Google. Por favor habilita las ventanas emergentes o inicia sesión con correo y contraseña.');
+        setError('El navegador bloqueó la ventana emergente de Google. Por favor habilita las ventanas emergentes o utiliza el Acceso Directo.');
       } else if (err.code === 'auth/cancelled-popup-request' || err.code === 'auth/popup-closed-by-user') {
         setError('Inicio de sesión cancelado.');
       } else {
@@ -324,6 +382,34 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
     setIsDemoUser(true);
     setError(null);
 
+    let urlEmpId: string | null = null;
+    let urlCedula: string | null = null;
+    let urlEmpName: string | null = null;
+    let urlEmail: string | null = null;
+
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      urlEmpId = p.get('emp_id');
+      urlCedula = p.get('cedula');
+      urlEmpName = p.get('emp_name');
+      urlEmail = p.get('invite_email');
+    }
+
+    const cleanDigits = (s: any) => String(s || '').replace(/\D/g, '');
+    const urlEmpDigits = cleanDigits(urlEmpId);
+    const urlCedDigits = cleanDigits(urlCedula);
+
+    const matched =
+      employee ||
+      employees.find((e) => {
+        if (urlEmpId && e.id === urlEmpId) return true;
+        if (urlEmpDigits && cleanDigits(e.id) === urlEmpDigits) return true;
+        if (urlEmpDigits && e.cedula && cleanDigits(e.cedula) === urlEmpDigits) return true;
+        if (urlCedDigits && e.cedula && cleanDigits(e.cedula) === urlCedDigits) return true;
+        if (urlEmail && e.email && e.email.toLowerCase() === urlEmail.toLowerCase()) return true;
+        return false;
+      });
+
     const defaultNames: Record<AppRole, string> = {
       'Administrativo': 'Pedro Guzmán (Administrador)',
       'Jefe de Zona': 'Carlos Restrepo (Jefe Zona Norte)',
@@ -332,12 +418,12 @@ export const AuthProvider: React.FC<{ children: ReactNode; employees: Employee[]
 
     const mockProfile: AppUserProfile = {
       uid: `role-user-${role.toLowerCase().replace(/\s+/g, '-')}`,
-      email: employee?.email || (role === 'Administrativo' ? 'pedroguzman@revesolution.net' : `${role.toLowerCase().replace(/\s+/g, '')}@sergem.com.co`),
-      displayName: employee ? `${employee.nombre} ${employee.apellido}` : defaultNames[role],
+      email: matched?.email || urlEmail || (role === 'Administrativo' ? 'pedroguzman@revesolution.net' : `${role.toLowerCase().replace(/\s+/g, '')}@sergem.com.co`),
+      displayName: matched ? `${matched.nombre} ${matched.apellido}` : (urlEmpName || defaultNames[role]),
       role: role,
-      ...(employee?.id || role === 'Repartidor' ? { employeeId: employee?.id || 'emp-001' } : {}),
-      ...(employee?.cedula || role === 'Repartidor' ? { cedula: employee?.cedula || '1017123456' } : {}),
-      telefono: employee?.telefono || '3001234567',
+      employeeId: matched?.id || urlEmpId || (role === 'Repartidor' ? 'emp-001' : undefined),
+      cedula: matched?.cedula || urlCedula || (role === 'Repartidor' ? '1017123456' : undefined),
+      telefono: matched?.telefono || '3001234567',
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),
     };

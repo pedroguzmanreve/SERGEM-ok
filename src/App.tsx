@@ -33,6 +33,7 @@ import {
   subscribePointsOfSale,
   saveEmployeeToFirestore,
   saveScheduleToFirestore,
+  saveBatchSchedulesToFirestore,
   saveZoneNovedadToFirestore,
   saveClientReportToFirestore,
   savePeriodToFirestore,
@@ -50,6 +51,7 @@ import {
   seedInitialDatabase,
   clearAllFirestoreCollections
 } from './services/firestoreService';
+import { normalizeExcelWeekDate } from './utils/attendanceService';
 import { calculatePayrollItem } from './utils/payrollCalculator';
 import { Header } from './components/Header';
 import { Navigation, TabType } from './components/Navigation';
@@ -297,6 +299,38 @@ export default function App() {
       await saveScheduleToFirestore(newSched);
     } catch (e) {
       console.warn('Error saving schedule to Firestore:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSaveBatchSchedules = async (batch: WeeklySchedule[], newEmployees?: Employee[]) => {
+    if (newEmployees && newEmployees.length > 0) {
+      setEmployees((prev) => {
+        const existingIds = new Set(prev.map((e) => e.id));
+        const toAdd = newEmployees.filter((e) => !existingIds.has(e.id));
+        return [...prev, ...toAdd];
+      });
+      for (const emp of newEmployees) {
+        saveEmployeeToFirestore(emp).catch(console.warn);
+      }
+    }
+
+    setSchedules((prev) => {
+      const map = new Map<string, WeeklySchedule>();
+      prev.forEach((s) => map.set(`${s.repartidorId}___${normalizeExcelWeekDate(s.semanaInicio)}`, s));
+      batch.forEach((s) => map.set(`${s.repartidorId}___${normalizeExcelWeekDate(s.semanaInicio)}`, s));
+      return Array.from(map.values());
+    });
+
+    try {
+      setIsSyncing(true);
+      await saveBatchSchedulesToFirestore(batch);
+    } catch (e) {
+      console.warn('Error saving batch schedules to Firestore:', e);
+      for (const s of batch) {
+        saveScheduleToFirestore(s).catch(console.warn);
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -573,6 +607,7 @@ export default function App() {
         handleAddEmployee={handleAddEmployee}
         handleUpdateEmployee={handleUpdateEmployee}
         handleSaveSchedule={handleSaveSchedule}
+        handleSaveBatchSchedules={handleSaveBatchSchedules}
         handleDeleteSchedule={handleDeleteSchedule}
         handleAddZoneNovedad={handleAddZoneNovedad}
         handleDeleteZoneNovedad={handleDeleteZoneNovedad}
@@ -621,6 +656,7 @@ interface AppContentProps {
   handleAddEmployee: (emp: Employee) => void;
   handleUpdateEmployee: (emp: Employee) => void;
   handleSaveSchedule: (sched: WeeklySchedule) => void;
+  handleSaveBatchSchedules: (batch: WeeklySchedule[], newEmployees?: Employee[]) => Promise<void>;
   handleDeleteSchedule: (id: string) => void;
   handleAddZoneNovedad: (nov: ZoneChiefNovedad) => void;
   handleDeleteZoneNovedad: (id: string) => void;
@@ -666,6 +702,7 @@ function AppContent({
   handleAddEmployee,
   handleUpdateEmployee,
   handleSaveSchedule,
+  handleSaveBatchSchedules,
   handleDeleteSchedule,
   handleAddZoneNovedad,
   handleDeleteZoneNovedad,
@@ -851,6 +888,7 @@ function AppContent({
             clientReports={clientReports}
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
 
@@ -867,6 +905,7 @@ function AppContent({
             costCenters={costCenters}
             pointsOfSale={pointsOfSale}
             onSaveSchedule={handleSaveSchedule}
+            onSaveBatchSchedules={handleSaveBatchSchedules}
             onDeleteSchedule={handleDeleteSchedule}
             onAddNovedad={handleAddZoneNovedad}
             onDeleteNovedad={handleDeleteZoneNovedad}
@@ -884,6 +923,9 @@ function AppContent({
             schedules={schedules}
             clientReports={clientReports}
             attendanceRecords={driverAttendance}
+            pointsOfSale={pointsOfSale}
+            clients={clients}
+            companies={companies}
             onAddClientReport={handleAddClientReport}
             onRecordAttendance={handleRecordAttendance}
             defaultDriverId={inviteParams?.empId || userProfile?.employeeId}
@@ -892,8 +934,8 @@ function AppContent({
           />
         )}
 
-        {/* Modulo 3: Portal Clientes & Reportes */}
-        {activeTab === 'client-report' && (currentRole === 'Administrativo' || currentRole === 'Jefe de Zona') && (
+        {/* Modulo 3: Portal Clientes & Reportes (Solo Rol Administrativo) */}
+        {activeTab === 'client-report' && currentRole === 'Administrativo' && (
           <ClientReportsView
             clientReports={clientReports}
             employees={employees}
